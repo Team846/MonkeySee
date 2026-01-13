@@ -3,7 +3,7 @@
   "cameras": [
     {
       "id": 1,
-      "name": "Camera 1",
+      "name": "ATCam1",
       "device_id": "ATCam1",
       "pipeline": "apriltag",
       "enabled": true

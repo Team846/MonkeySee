@@ -4,6 +4,7 @@ from util.logger import Logger
 from time import time_ns, sleep
 from typing import Tuple, Optional
 import platform
+import os
 
 logger = Logger("Camera")
 
@@ -20,6 +21,9 @@ class CameraReader:
             f"/dev/v4l/by-id/"
             f"usb-Arducam_Technology_Co.__Ltd._{camera_id}_{camera_id}-video-index0"
         )
+
+        print("Chosen camera path: ", self.camera_path)
+        print("Available camera paths: ", os.listdir("/dev/v4l/by-id"))
 
         self.cap: Optional[cv2.VideoCapture] = None
         self.fail_count = 0
