@@ -1,0 +1,39 @@
+{
+  "development": false,
+  "cameras": [
+    {
+      "id": 1,
+      "name": "Camera 1",
+      "device_id": "ATCam1",
+      "pipeline": "apriltag",
+      "enabled": true
+    }
+  ],
+  "network_tables": { "server": "10.8.46.2", "team_number": 846 },
+  "Detection": {
+    "min_thresh_win": { "value": "3", "type": 1 },
+    "max_thresh_win": { "value": "23", "type": 1 },
+    "thresh_step": { "value": "17", "type": 1 }
+  },
+  "visionY": {
+    "CONFIDENCE": { "value": "0.35", "type": 2 },
+    "ASPECT_THRESH": { "value": "0.3", "type": 2 }
+  },
+  "GamePieceSolution": {
+    "WD": { "value": "15.5", "type": 2 },
+    "ONT": { "value": "10.0", "type": 2 }
+  },
+  "Preprocessing": {
+    "acc_num_bins": { "value": "1200", "type": 1 },
+    "target_brightness": { "value": "154", "type": 1 },
+    "min_corr_strength": { "value": "0.1", "type": 2 },
+    "corr_divisor": { "value": "400.0", "type": 2 },
+    "divergence_gain": { "value": "1.5", "type": 2 }
+  },
+  "HTMLServer": { "framecomp_slider": { "value": "0.5", "type": 2 } },
+  "AprilTag0": {
+    "CAM_MOUNT_H_deg": { "value": "0.0", "type": 2 },
+    "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
+    "TAG_H_in": { "value": "6.5", "type": 2 }
+  }
+}

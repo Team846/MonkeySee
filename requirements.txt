@@ -1,0 +1,7 @@
+opencv-python
+numpy
+dash==2.18.2
+Flask
+pyntcore
+numba
+ultralytics
