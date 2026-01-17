@@ -17,13 +17,19 @@ class CameraReader:
         self.camera_id = camera_id
         self.use_preprocessing = use_preprocessing
 
-        self.camera_path = (
-            f"/dev/v4l/by-id/"
-            f"usb-Arducam_Technology_Co.__Ltd._{camera_id}_{camera_id}-video-index0"
-        )
-
-        print("Chosen camera path: ", self.camera_path)
-        print("Available camera paths: ", os.listdir("/dev/v4l/by-id"))
+        if platform.system() not in ["Windows", "Darwin"]:
+            self.camera_path = (
+                f"/dev/v4l/by-id/"
+                f"usb-Arducam_Technology_Co.__Ltd._{camera_id}_{camera_id}-video-index0"
+            )
+            print("Chosen camera path: ", self.camera_path)
+            try:
+                print("Available camera paths: ", os.listdir("/dev/v4l/by-id"))
+            except FileNotFoundError:
+                logger.Warn("Could not list /dev/v4l/by-id")
+        else:
+            self.camera_path = None
+            logger.Log(f"Using default camera on {platform.system()}")
 
         self.cap: Optional[cv2.VideoCapture] = None
         self.fail_count = 0
