@@ -5,7 +5,7 @@
       "id": 0,
       "name": "Dev Camera",
       "device_id": 0,
-      "pipeline": "apriltag",
+      "pipeline": "gpd",
       "enabled": true
     }
   ],

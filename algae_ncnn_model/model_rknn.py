@@ -1,13 +1,10 @@
-import sys
-sys.path.insert(0, '/home/orangepi/monkeyvisiongpd/GPD2026/rknn-toolkit2')
-
 from rknn.api import RKNN
 import numpy as np
 
 def test_inference():
     rknn = None  # initialize safely
 
-    in0 = np.random.rand(1, 3, 256, 256).astype(np.float32)
+    in0 = np.random.rand(1, 3, 1280, 1280).astype(np.float32)
 
     try:
         rknn = RKNN()
@@ -18,7 +15,8 @@ def test_inference():
             print("Load model failed")
             return None
 
-        ret = rknn.init_runtime()
+        ret = rknn.init_runtime(target='rk3588')
+        
         if ret != 0:
             print("Initialize runtime failed")
             return None
