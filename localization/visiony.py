@@ -3,7 +3,7 @@ from ultralytics import YOLO
 import cv2
 from time import sleep
 
-model = YOLO("algae_ncnn_model", task="detect")
+model = YOLO("fuel_rknn_model", task="detect")
 
 pref_category = ConfigCategory(f"visionY")
 
