@@ -3,7 +3,7 @@ from ultralytics import YOLO
 import cv2
 from time import sleep
 
-model = YOLO("fuel_rknn_model", task="detect")
+model = YOLO("/home/orangepi/monkeyvisiongpd/MonkeySee/fuel_rknn_model3", task="detect")
 
 pref_category = ConfigCategory(f"visionY")
 
@@ -14,13 +14,18 @@ ASPECT_THRESH = pref_category.getFloatConfig("ASPECT_THRESH", 0.3)
 def runPipeline(frame):
     global CONF, ASPECT_THRESH
 
-    f = cv2.resize(frame, (256, 256))
+    if frame is None:
+        return None,[]
+
+    f = cv2.resize(frame, (640, 640))
+    
 
     boxes = []
 
     try:
         results = model.predict(f, conf=CONF.valueFloat(), imgsz=256, verbose=False)
-
+        #results = model.predict(f, conf=0, imgsz=640, verbose=False)  # set conf=0 to see everything
+        #print("Raw outputs:", results)
         for result in results:
             for box in result.boxes.xyxy:
                 x1, y1, x2, y2 = map(int, box)
