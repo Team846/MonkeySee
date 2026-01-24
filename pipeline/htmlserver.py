@@ -12,8 +12,9 @@ class DashboardServer:
     config_category = ConfigCategory("HTMLServer")
     framecomp_slider = config_category.getFloatConfig("framecomp_slider", 0.5)
 
-    def __init__(self, vision_manager: VisionManager):
+    def __init__(self, vision_manager: VisionManager, camera_id: int):
         self.vision_manager = vision_manager
+        self.camera_id = camera_id
         self.server = Flask(__name__)
         self.app = Dash(__name__, server=self.server, suppress_callback_exceptions=True)
         self.app.index_string = self.index_string()
@@ -23,13 +24,12 @@ class DashboardServer:
         self.start_server_thread()
 
     def setup_layout(self):
-        pipelines = self.vision_manager.get_all_pipelines()
+        pipeline = self.vision_manager.get_pipeline(self.camera_id)
         
-        if not pipelines:
-            camera_content = html.Div("No cameras available")
+        if not pipeline:
+            camera_content = html.Div(f"Camera {self.camera_id} not available")
         else:
-            cam_id = min(pipelines.keys())
-            pipeline = pipelines[cam_id]
+            cam_id = self.camera_id
             
             if pipeline.get_pipeline_type() == "apriltag":
                 settings_panel = self.create_apriltag_sliders(cam_id)
@@ -373,98 +373,98 @@ class DashboardServer:
         def keep_camera_content(n):
             return no_update
         
-        for cam_id in self.vision_manager.get_all_pipelines().keys():
-            @self.app.callback(
-                Output(f'metrics-{cam_id}', 'children'),
-                [Input('update-interval', 'n_intervals')]
-            )
-            def update_metrics(n_intervals, camera_id=cam_id):
-                pipeline = self.vision_manager.get_pipeline(camera_id)
-                if pipeline and pipeline.is_enabled():
-                    backend_fps = pipeline.get_backend_fps()
-                    fps_display = f"{backend_fps:.1f}" if backend_fps > 0 else f"{pipeline.get_framerate():.1f}"
-                    return [
-                        html.Span(f"Processing: {fps_display} FPS", style={
-                            "position": "absolute",
-                            "left": "0",
-                            "bottom": "0",
-                            "color": "rgba(255, 255, 255, 0.8)",
-                            "font-size": "18px",
-                            "font-weight": "regular",
-                            "font-style": "italic",
-                            "padding": "5px 10px",
-                        }),
-                        html.Span(f"Latency: {pipeline.get_processing_latency() * 1000:.2f} ms", style={
-                            "position": "absolute",
-                            "right": "0",
-                            "bottom": "0",
-                            "color": "rgba(255, 255, 255, 0.8)",
-                            "font-size": "18px",
-                            "font-weight": "regular",
-                            "padding": "5px 10px",
-                            "font-style": "italic",
-                            "border-radius": "5px",
-                        })
-                    ]
-                return [html.Span("Disabled", style={'color': '#888'})]
-            
-            @self.app.callback(
-                Output(f'detections-{cam_id}', 'children'),
-                [Input('update-interval', 'n_intervals')]
-            )
-            def update_detections(n_intervals, camera_id=cam_id):
-                pipeline = self.vision_manager.get_pipeline(camera_id)
-                if pipeline and pipeline.is_enabled():
-                    detections = pipeline.get_detections()
-                    if not detections:
-                        return [html.Div("No detections", style={
-                            'color': '#CCC9CA',
-                            'font-size': '14px',
-                            'text-align': 'center',
-                            'border-radius': '10px',
-                            'border': '2px solid rgba(255, 255, 255, 0.5)',
-                            'padding': '10px',
-                            'margin': '0 0px 20px 20px',
-                        })]
-                    
-                    detection_items = []
-                    for i, det in enumerate(detections):
-                        if pipeline.get_pipeline_type() == "apriltag":
-                            detection_items.append(html.Div([
-                                html.Span(f"Detection #{i + 1}:", style={'color': '#CCC9CA', 'margin-right': '10px', 'font-weight': 'medium'}),
-                                html.Span(f"Tag {det.getTag()}", style={'color': '#CCC9CA', 'margin-right': '5px'}),
-                                html.Span(f"R {det.getR():.1f}in", style={'color': '#CCC9CA', 'margin-right': '5px'}),
-                                html.Span(f"θ {det.getTheta():.2f}deg", style={'color': '#CCC9CA'}),
-                            ], style={
-                                'border': '2px solid rgba(255, 255, 255, 0.5)',
-                                'border-radius': '10px',
-                                'padding': '10px',
-                                'font-size': '14px',
-                                'margin': '0 0px 20px 20px',
-                                'width': '100%',
-                            }))
-                        else:
-                            detection_items.append(html.Div([
-                                html.Span(f"Detection #{i + 1}:", style={'color': '#CCC9CA', 'margin-right': '10px', 'font-weight': 'medium'}),
-                                html.Span(f"R {det.getR():.2f}in", style={'color': '#CCC9CA', 'margin-right': '5px'}),
-                                html.Span(f"θ {det.getTheta():.2f}deg", style={'color': '#CCC9CA', 'margin-right': '10px'}),
-                                html.Span(f"On: {det.isOnTop()}", style={'color': '#CCC9CA'}),
-                            ], style={
-                                'border': '2px solid rgba(255, 255, 255, 0.5)',
-                                'border-radius': '10px',
-                                'padding': '10px',
-                                'font-size': '14px',
-                                'margin': '0 0px 20px 20px',
-                                'width': '100%',
-                            }))
-                    return detection_items
-                return [html.Div("Camera disabled", style={'color': '#888'})]
+        cam_id = self.camera_id
         
+        @self.app.callback(
+            Output(f'metrics-{cam_id}', 'children'),
+            [Input('update-interval', 'n_intervals')]
+        )
+        def update_metrics(n_intervals, camera_id=cam_id):
+            pipeline = self.vision_manager.get_pipeline(camera_id)
+            if pipeline and pipeline.is_enabled():
+                backend_fps = pipeline.get_backend_fps()
+                fps_display = f"{backend_fps:.1f}" if backend_fps > 0 else f"{pipeline.get_framerate():.1f}"
+                return [
+                    html.Span(f"Processing: {fps_display} FPS", style={
+                        "position": "absolute",
+                        "left": "0",
+                        "bottom": "0",
+                        "color": "rgba(255, 255, 255, 0.8)",
+                        "font-size": "18px",
+                        "font-weight": "regular",
+                        "font-style": "italic",
+                        "padding": "5px 10px",
+                    }),
+                    html.Span(f"Latency: {pipeline.get_processing_latency() * 1000:.2f} ms", style={
+                        "position": "absolute",
+                        "right": "0",
+                        "bottom": "0",
+                        "color": "rgba(255, 255, 255, 0.8)",
+                        "font-size": "18px",
+                        "font-weight": "regular",
+                        "padding": "5px 10px",
+                        "font-style": "italic",
+                        "border-radius": "5px",
+                    })
+                ]
+            return [html.Span("Disabled", style={'color': '#888'})]
+        
+        @self.app.callback(
+            Output(f'detections-{cam_id}', 'children'),
+            [Input('update-interval', 'n_intervals')]
+        )
+        def update_detections(n_intervals, camera_id=cam_id):
+            pipeline = self.vision_manager.get_pipeline(camera_id)
+            if pipeline and pipeline.is_enabled():
+                detections = pipeline.get_detections()
+                if not detections:
+                    return [html.Div("No detections", style={
+                        'color': '#CCC9CA',
+                        'font-size': '14px',
+                        'text-align': 'center',
+                        'border-radius': '10px',
+                        'border': '2px solid rgba(255, 255, 255, 0.5)',
+                        'padding': '10px',
+                        'margin': '0 0px 20px 20px',
+                    })]
+                
+                detection_items = []
+                for i, det in enumerate(detections):
+                    if pipeline.get_pipeline_type() == "apriltag":
+                        detection_items.append(html.Div([
+                            html.Span(f"Detection #{i + 1}:", style={'color': '#CCC9CA', 'margin-right': '10px', 'font-weight': 'medium'}),
+                            html.Span(f"Tag {det.getTag()}", style={'color': '#CCC9CA', 'margin-right': '5px'}),
+                            html.Span(f"R {det.getR():.1f}in", style={'color': '#CCC9CA', 'margin-right': '5px'}),
+                            html.Span(f"θ {det.getTheta():.2f}deg", style={'color': '#CCC9CA'}),
+                        ], style={
+                            'border': '2px solid rgba(255, 255, 255, 0.5)',
+                            'border-radius': '10px',
+                            'padding': '10px',
+                            'font-size': '14px',
+                            'margin': '0 0px 20px 20px',
+                            'width': '100%',
+                        }))
+                    else:
+                        detection_items.append(html.Div([
+                            html.Span(f"Detection #{i + 1}:", style={'color': '#CCC9CA', 'margin-right': '10px', 'font-weight': 'medium'}),
+                            html.Span(f"R {det.getR():.2f}in", style={'color': '#CCC9CA', 'margin-right': '5px'}),
+                            html.Span(f"θ {det.getTheta():.2f}deg", style={'color': '#CCC9CA', 'margin-right': '10px'}),
+                            html.Span(f"On: {det.isOnTop()}", style={'color': '#CCC9CA'}),
+                        ], style={
+                            'border': '2px solid rgba(255, 255, 255, 0.5)',
+                            'border-radius': '10px',
+                            'padding': '10px',
+                            'font-size': '14px',
+                            'margin': '0 0px 20px 20px',
+                            'width': '100%',
+                        }))
+                return detection_items
+            return [html.Div("Camera disabled", style={'color': '#888'})]
+    
         self.setup_slider_callbacks()
         
-        for cam_id in self.vision_manager.get_all_pipelines().keys():
-            self.server.add_url_rule(f'/video_feed/{cam_id}', f'video_feed_{cam_id}',
-                                    lambda cid=cam_id: self.video_feed(cid))
+        self.server.add_url_rule(f'/video_feed/{cam_id}', f'video_feed_{cam_id}',
+                                lambda cid=cam_id: self.video_feed(cid))
 
     def setup_slider_callbacks(self):
         from camera.preprocess import SET_DIVERGENCE_GAIN, SET_TARGET_BRIGHTNESS, SET_NUM_BINS, SET_MIN_CORR_STRENGTH
@@ -651,14 +651,9 @@ class DashboardServer:
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
     def start_server(self):
-        pipelines = self.vision_manager.get_all_pipelines()
-        if pipelines:
-            first_cam_id = min(pipelines.keys())
-            port = 5800 + first_cam_id
-        else:
-            port = 5800
+        port = 5800 + self.camera_id
         print(f"\n{'='*50}")
-        print(f"MonkeySee Dashboard Starting")
+        print(f"MonkeySee Dashboard Starting for Camera {self.camera_id}")
         print(f"Port: {port}")
         print(f"Access at: http://0.0.0.0:{port}")
         print(f"{'='*50}\n")

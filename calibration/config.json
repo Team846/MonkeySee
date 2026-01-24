@@ -1,0 +1,50 @@
+{
+    "visionY": {
+        "CONFIDENCE": {
+            "value": "0.4",
+            "type": 2
+        },
+        "ASPECT_THRESH": {
+            "value": "2.4",
+            "type": 2
+        }
+    },
+    "PartialSolution": {
+        "WD": {
+            "value": "16",
+            "type": 2
+        },
+        "ONT": {
+            "value": "-3",
+            "type": 2
+        }
+    },
+    "HTMLServer": {
+        "framecomp_slider": {
+            "value": "1",
+            "type": 2
+        }
+    },
+    "Preprocessing": {
+        "acc_num_bins": {
+            "value": "1200",
+            "type": 1
+        },
+        "target_brightness": {
+            "value": "250",
+            "type": 1
+        },
+        "min_corr_strength": {
+            "value": "0.7000000000000001",
+            "type": 2
+        },
+        "corr_divisor": {
+            "value": "400.0",
+            "type": 2
+        },
+        "divergence_gain": {
+            "value": "1.8000000000000005",
+            "type": 2
+        }
+    }
+}

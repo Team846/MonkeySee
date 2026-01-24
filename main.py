@@ -19,5 +19,8 @@ if __name__ == "__main__":
 
     print(f"Using config: {config_file}")
     vision_manager = VisionManager(config_file)
-    server = pipeline.htmlserver.DashboardServer(vision_manager)
+    servers = []
+    for camera_id in vision_manager.get_all_pipelines().keys():
+        server = pipeline.htmlserver.DashboardServer(vision_manager, camera_id)
+        servers.append(server)
     vision_manager.execute()

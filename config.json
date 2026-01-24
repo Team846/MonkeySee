@@ -7,6 +7,13 @@
       "device_id": "ATCam1",
       "pipeline": "apriltag",
       "enabled": true
+    },
+    {
+      "id": 3,
+      "name": "ATCam3",
+      "device_id": "ATCam3",
+      "pipeline": "apriltag",
+      "enabled": true
     }
   ],
   "network_tables": { "server": "10.8.46.2", "team_number": 846 },
@@ -32,7 +39,27 @@
   },
   "HTMLServer": { "framecomp_slider": { "value": "0.5", "type": 2 } },
   "AprilTag0": {
-    "CAM_MOUNT_H_deg": { "value": "0.0", "type": 2 },
+    "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
+    "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
+    "TAG_H_in": { "value": "6.5", "type": 2 }
+  },
+  "AprilTag1": {
+    "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
+    "CAM_MOUNT_V_deg": { "value": "15.0", "type": 2 },
+    "TAG_H_in": { "value": "6.5", "type": 2 }
+  },
+  "AprilTag2": {
+    "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
+    "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
+    "TAG_H_in": { "value": "6.5", "type": 2 }
+  },
+  "AprilTag3": {
+    "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
+    "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
+    "TAG_H_in": { "value": "6.5", "type": 2 }
+  },
+  "AprilTag4": {
+    "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
     "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
     "TAG_H_in": { "value": "6.5", "type": 2 }
   }
