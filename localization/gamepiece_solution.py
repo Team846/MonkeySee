@@ -3,8 +3,7 @@ from util.logger import Logger
 from cv2.typing import MatLike
 from typing import List, Tuple
 import math
-import json
-from localization.undistort import load_calibration, calibrations
+from localization.undistort import load_calibration, GET_CAMERA_ANGLES
 
 logger = Logger("GamePieceSolution")
 
@@ -38,31 +37,18 @@ class Detection:
     def __repr__(self) -> str:
         return self.__str__()
 
-def horizontal_angle(x_pos: float, frame: MatLike, camera_id: int) -> float:
-    global calibrations
-    
-    cal = calibrations.get(camera_id, {})
-    q = cal.get("x", {"a": 0, "b": 0, "c": 0})
-    
+def pixel_to_angles(x_pos: float, y_pos: float, frame: MatLike, camera_id: int) -> Tuple[float, float]:
+    cal = load_calibration(camera_id)
     meta = cal.get("meta", {})
     w = meta.get("resolution", {}).get("width", 640)
-    
-    x_pos *= w / 256.0
-    
-    return math.degrees(q["a"] * x_pos + q["b"] * x_pos**3 + q["c"] * x_pos**5)
-
-def vertical_angle(y_pos: float, frame: MatLike, camera_id: int) -> float:
-    global calibrations
-    
-    cal = calibrations.get(camera_id, {})
-    q = cal.get("y", {"a": 0, "b": 0, "c": 0})
-    
-    meta = cal.get("meta", {})
     h = meta.get("resolution", {}).get("height", 480)
     
-    y_pos *= h / 256.0
+    x_img = x_pos * (w / 256.0)
+    y_img = y_pos * (h / 256.0)
     
-    return math.degrees(q["a"] * y_pos + q["b"] * y_pos**3 + q["c"] * y_pos**5)
+    angle_x, angle_y = GET_CAMERA_ANGLES(x_img, y_img, frame, camera_id)
+    
+    return angle_x, angle_y
 
 def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, objs: List[Tuple[float, float]]) -> List[Detection]:
     global WD, ONT
@@ -77,11 +63,16 @@ def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, objs: List[Tuple[
             objr[1] = 256 / 2 - obj[1]
             objr[3] = 256 / 2 - obj[3]
             
-            l_h = math.radians(horizontal_angle(objr[0], image, camera_id))
-            r_h = math.radians(horizontal_angle(objr[2], image, camera_id))
+            l_h, _ = pixel_to_angles(objr[0], 0.0, image, camera_id)
+            r_h, _ = pixel_to_angles(objr[2], 0.0, image, camera_id)
             
-            d_v = math.radians(vertical_angle(objr[1], image, camera_id))
-            u_v = math.radians(vertical_angle(objr[3], image, camera_id))
+            _, d_v = pixel_to_angles(0.0, objr[1], image, camera_id)
+            _, u_v = pixel_to_angles(0.0, objr[3], image, camera_id)
+            
+            l_h = math.radians(l_h)
+            r_h = math.radians(r_h)
+            d_v = math.radians(d_v)
+            u_v = math.radians(u_v)
             
             r_ground: float = WD.valueFloat() / (math.tan(r_h) - math.tan(l_h))
             r_ground += WD.valueFloat() / (math.tan(d_v) - math.tan(u_v))
@@ -89,12 +80,11 @@ def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, objs: List[Tuple[
             
             height: float = r_ground * math.tan((d_v + u_v) / 2.0)
             
-            is_on_top = False
+            is_on_top = height > ONT.valueFloat()
             
-            if height > ONT.valueFloat():
-                is_on_top = True
+            center_angle = math.degrees(l_h + r_h) / 2.0
             
-            result.append(Detection(r_ground, math.degrees(l_h + r_h) / 2.0, is_on_top, height))
+            result.append(Detection(r_ground, center_angle, is_on_top, height))
         except Exception as e:
             logger.Error(f"Failed to process object {obj}: {e}")
     

@@ -7,13 +7,6 @@
       "device_id": "ATCam1",
       "pipeline": "apriltag",
       "enabled": true
-    },
-    {
-      "id": 3,
-      "name": "ATCam3",
-      "device_id": "ATCam3",
-      "pipeline": "apriltag",
-      "enabled": true
     }
   ],
   "network_tables": { "server": "10.8.46.2", "team_number": 846 },

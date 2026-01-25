@@ -1,12 +1,13 @@
 import math
 from dash import Dash, html, dcc, Input, Output, State, ALL, MATCH
 import cv2
-from flask import Flask, Response
+from flask import Flask, Response, jsonify, request
 from pipeline.visionmanager import VisionManager
 import time
 from threading import Thread
 from util.config import ConfigCategory
 import os
+from calibration.charuco_calibrator import CharucoCalibrator
 
 class DashboardServer:
     config_category = ConfigCategory("HTMLServer")
@@ -19,24 +20,24 @@ class DashboardServer:
         self.app = Dash(__name__, server=self.server, suppress_callback_exceptions=True)
         self.app.index_string = self.index_string()
         
+        self.calibrator = CharucoCalibrator(camera_id)
+        
         self.setup_layout()
         self.setup_callbacks()
         self.start_server_thread()
 
-    def setup_layout(self):
-        pipeline = self.vision_manager.get_pipeline(self.camera_id)
+    def create_detection_content(self, cam_id):
+        pipeline = self.vision_manager.get_pipeline(cam_id)
         
         if not pipeline:
-            camera_content = html.Div(f"Camera {self.camera_id} not available")
+            return html.Div(f"Camera {cam_id} not available")
+        
+        if pipeline.get_pipeline_type() == "apriltag":
+            settings_panel = self.create_apriltag_sliders(cam_id)
         else:
-            cam_id = self.camera_id
-            
-            if pipeline.get_pipeline_type() == "apriltag":
-                settings_panel = self.create_apriltag_sliders(cam_id)
-            else:
-                settings_panel = self.create_gamepiece_sliders(cam_id)
-            
-            camera_content = html.Div([
+            settings_panel = self.create_gamepiece_sliders(cam_id)
+        
+        return html.Div([
                 html.Div([
                     html.Div([
                         html.H4("Detections", style={
@@ -141,6 +142,9 @@ class DashboardServer:
                     "overflow-x": "hidden",
                 })
             ])
+
+    def setup_layout(self):
+        camera_content = self.create_detection_content(self.camera_id)
         
         self.app.layout = html.Div([
             html.Div([
@@ -171,7 +175,15 @@ class DashboardServer:
                 ),
             ]),
             
-            html.Div(camera_content, id='camera-content'),
+            dcc.Tabs(id='tabs', value='detection', children=[
+                dcc.Tab(label='Detection', value='detection', className='custom-tab', selected_className='custom-tab--selected'),
+                dcc.Tab(label='Calibration', value='calibration', className='custom-tab', selected_className='custom-tab--selected'),
+            ], style={
+                'margin': '0 25px',
+                'border-bottom': '2px solid #CDA646',
+            }),
+            
+            html.Div(id='tab-content', children=camera_content),
             
             dcc.Interval(id="update-interval", interval=1000, n_intervals=0),
         ], style={
@@ -316,6 +328,137 @@ class DashboardServer:
             ),
         ])
 
+    def create_calibration_tab(self, cam_id):
+        return html.Div([
+            html.Div([
+                html.Div([
+                    html.H4("Camera Calibration", style={
+                        'textAlign': 'left',
+                        'color': '#CCC9CA',
+                        'font-size': '18px',
+                        'font-weight': 'medium',
+                        'padding': '0px 0px 0px 7px',
+                    }),
+                    
+                    html.Div([
+                        html.P("https://calib.io/pages/camera-calibration-pattern-generator", style={'margin': '10px 0'}),
+                        html.P("11 rows, 8 columns", style={'margin': '10px 0'}),
+                        html.P("15mm ChArUco markers. Class 4x4.", style={'margin': '10px 0'}),
+                    ], style={
+                        'color': '#CCC9CA',
+                        'font-size': '14px',
+                        'padding': '15px 20px',
+                        'border': '2px solid rgba(255, 255, 255, 0.3)',
+                        'border-radius': '10px',
+                        'margin': '15px 7px',
+                    }),
+                    
+                    html.Div(id=f'calibration-status-{cam_id}', style={
+                        'padding': '15px 20px',
+                        'margin': '15px 7px',
+                        'border': '2px solid rgba(255, 255, 255, 0.3)',
+                        'border-radius': '10px',
+                        'color': '#CCC9CA',
+                        'font-size': '14px',
+                    }),
+                    
+                    html.Div([
+                        html.Button("Calibrate", id={'type': 'run-calibration', 'index': cam_id}, style={
+                            "margin": "10px 5px",
+                            "font-size": "14px",
+                            "color": "#161616",
+                            "background-color": "rgba(100, 200, 100, 1)",
+                            "border": "none",
+                            "padding": "8px 16px",
+                            "width": "180px",
+                            "height": "40px",
+                            "border-radius": "20px",
+                            "cursor": "pointer",
+                            "font-weight": "bold"
+                        }),
+                        html.Button("Reset", id={'type': 'reset-calibration', 'index': cam_id}, style={
+                            "margin": "10px 5px",
+                            "font-size": "14px",
+                            "color": "#161616",
+                            "background-color": "rgba(255, 100, 100, 1)",
+                            "border": "none",
+                            "padding": "8px 16px",
+                            "width": "180px",
+                            "height": "40px",
+                            "border-radius": "20px",
+                            "cursor": "pointer",
+                            "font-weight": "bold"
+                        }),
+                    ], style={
+                        "display": "flex",
+                        "flex-direction": "column",
+                        "align-items": "center",
+                        "padding": "10px",
+                    }),
+                    
+                ], style={
+                    "flex": "1",
+                    "padding": "10px",
+                    "color": "#FFF",
+                    "flex-direction": "column",
+                    "display": "flex",
+                    "flex-grow": "1",
+                    "min-width": "40%",
+                    "max-width": "50%",
+                    "box-sizing": "border-box",
+                    "overflow-y": "auto",
+                    "overflow-x": "hidden",
+                    "height": "85vh",
+                }),
+                
+                html.Div([
+                    html.Div([
+                        html.Div(f"Calibration Preview - Camera {cam_id}", style={
+                            'color': '#CDA646',
+                            'font-size': '12px',
+                            'font-weight': 'bold',
+                            'margin-bottom': '5px',
+                            'text-align': 'center',
+                        }),
+                        html.Img(
+                            src=f"/calibration_feed/{cam_id}",
+                            style={
+                                "width": "100%",
+                                "max-width": "650px",
+                                "max-height": "600px",
+                                "border": "3px solid #CDA646",
+                            "border-radius": "9px",
+                        }
+                    ),
+                ], style={
+                    "display": "flex",
+                    "flex-direction": "column",
+                    "align-items": "center",
+                    "justify-content": "center",
+                }),
+            ], style={
+                "flex": "3",
+                "display": "flex",
+                "justify-content": "center",
+                "align-items": "center",
+                "padding": "20px",
+                "height": "85vh",
+            })
+        ], style={
+            "display": "flex",
+            "flex-direction": "row",
+            "width": "100%",
+            "padding": "10px 10px",
+            "overflow-x": "hidden",
+        }),
+        
+        html.Div(id=f'calibration-results-{cam_id}', style={
+            "width": "100%",
+            "padding": "20px",
+            "display": "none",  # Hidden by default
+        })
+    ])
+
     def create_gamepiece_sliders(self, cam_id):
         from localization.visiony import CONF, ASPECT_THRESH
         from localization.gamepiece_solution import WD, ONT
@@ -367,11 +510,14 @@ class DashboardServer:
         from dash import no_update
         
         @self.app.callback(
-            Output('camera-content', 'children'),
-            [Input('update-interval', 'n_intervals')]
+            Output('tab-content', 'children'),
+            [Input('tabs', 'value')]
         )
-        def keep_camera_content(n):
-            return no_update
+        def render_tab_content(tab):
+            if tab == 'calibration':
+                return self.create_calibration_tab(self.camera_id)
+            else:  # detection tab
+                return self.create_detection_content(self.camera_id)
         
         cam_id = self.camera_id
         
@@ -465,6 +611,8 @@ class DashboardServer:
         
         self.server.add_url_rule(f'/video_feed/{cam_id}', f'video_feed_{cam_id}',
                                 lambda cid=cam_id: self.video_feed(cid))
+        self.server.add_url_rule(f'/calibration_feed/{cam_id}', f'calibration_feed_{cam_id}',
+                                lambda cid=cam_id: self.calibration_feed(cid))
 
     def setup_slider_callbacks(self):
         from camera.preprocess import SET_DIVERGENCE_GAIN, SET_TARGET_BRIGHTNESS, SET_NUM_BINS, SET_MIN_CORR_STRENGTH
@@ -591,7 +739,143 @@ class DashboardServer:
             if n_clicks:
                 os.system('sudo reboot')
             return n_clicks
+        
+        self.setup_calibration_callbacks()
 
+    def setup_calibration_callbacks(self):
+        cam_id = self.camera_id
+        
+        @self.app.callback(
+            Output(f'calibration-status-{cam_id}', 'children'),
+            [Input('update-interval', 'n_intervals')]
+        )
+        def update_calibration_status(n_intervals):
+            status = self.calibrator.get_status()
+            return html.Div([
+                html.Div(f"Status: {status['status_message']}", style={'margin': '5px 0'}),
+                html.Div(f"Samples: {status['num_samples']}/{status['target_samples']}", style={'margin': '5px 0'}),
+                html.Div(f"Progress: {status['progress']*100:.0f}%", style={'margin': '5px 0'}),
+                html.Div(
+                    "✓ Ready to calibrate" if status['is_ready'] else "Need more samples",
+                    style={'margin': '5px 0', 'color': '#00ff00' if status['is_ready'] else '#ffaa00'}
+                ),
+            ])
+        
+        @self.app.callback(
+            Output(f'calibration-results-{cam_id}', 'children'),
+            Output(f'calibration-results-{cam_id}', 'style'),
+            [Input('update-interval', 'n_intervals')]
+        )
+        def update_calibration_results(n_intervals):
+            result = self.calibrator.calibration_result
+            if result is None:
+                return [], {'display': 'none'}
+            
+            meta = result.get('meta', {})
+            fov = meta.get('fov', {})
+            distortion_viz = meta.get('distortion_viz_base64', '')
+            
+            return [
+                html.H4("Calibration Results", style={
+                    'color': '#CDA646',
+                    'margin': '20px 0 10px 0',
+                    'text-align': 'center',
+                }),
+                html.Div([
+                    html.Div([
+                        html.H5("Field of View", style={'color': '#CCC9CA', 'margin': '10px 0'}),
+                        html.Div(f"Horizontal: {fov.get('horizontal', 0):.1f}°", 
+                                style={'color': '#CCC9CA', 'margin': '5px 0'}),
+                        html.Div(f"Vertical: {fov.get('vertical', 0):.1f}°", 
+                                style={'color': '#CCC9CA', 'margin': '5px 0'}),
+                        html.Div(f"Diagonal: {fov.get('diagonal', 0):.1f}°", 
+                                style={'color': '#CCC9CA', 'margin': '5px 0'}),
+                        html.Div(f"Reprojection Error: {meta.get('reprojection_error', 0):.4f} px", 
+                                style={'color': '#CCC9CA', 'margin': '15px 0 5px 0'}),
+                        html.Div(f"Samples Used: {meta.get('num_samples', 0)}", 
+                                style={'color': '#CCC9CA', 'margin': '5px 0'}),
+                    ], style={
+                        'flex': '1',
+                        'padding': '20px',
+                        'border': '2px solid #CDA646',
+                        'border-radius': '10px',
+                        'margin': '10px',
+                    }),
+                    html.Div([
+                        html.Img(src=f"data:image/png;base64,{distortion_viz}",
+                                style={
+                                    'max-width': '100%',
+                                    'border': '2px solid #CDA646',
+                                    'border-radius': '5px',
+                                }),
+                    ], style={
+                        'flex': '2',
+                        'padding': '20px',
+                        'margin': '10px',
+                    }),
+                ], style={
+                    'display': 'flex',
+                    'flex-direction': 'row',
+                    'align-items': 'center',
+                    'justify-content': 'center',
+                }),
+                html.Div([
+                    html.Button("Save Calibration", id={'type': 'save-calibration', 'index': cam_id}, style={
+                        "margin": "20px 5px",
+                        "font-size": "16px",
+                        "color": "#161616",
+                        "background-color": "rgba(100, 200, 100, 1)",
+                        "border": "none",
+                        "padding": "12px 24px",
+                        "width": "250px",
+                        "height": "50px",
+                        "border-radius": "25px",
+                        "cursor": "pointer",
+                        "font-weight": "bold"
+                    }),
+                ], style={
+                    "display": "flex",
+                    "justify-content": "center",
+                    "align-items": "center",
+                })
+            ], {
+                'width': '100%',
+                'padding': '20px',
+                'display': 'block',
+                'background-color': 'rgba(0, 0, 0, 0.3)',
+                'border-top': '2px solid #CDA646',
+            }
+        
+        @self.app.callback(
+            Output({'type': 'run-calibration', 'index': MATCH}, 'n_clicks'),
+            [Input({'type': 'run-calibration', 'index': MATCH}, 'n_clicks')],
+            prevent_initial_call=True
+        )
+        def run_calibration(n_clicks):
+            if n_clicks:
+                Thread(target=self.calibrator.calibrate, daemon=True).start()
+            return n_clicks
+        
+        @self.app.callback(
+            Output({'type': 'reset-calibration', 'index': MATCH}, 'n_clicks'),
+            [Input({'type': 'reset-calibration', 'index': MATCH}, 'n_clicks')],
+            prevent_initial_call=True
+        )
+        def reset_calibration(n_clicks):
+            if n_clicks:
+                self.calibrator.reset()
+            return n_clicks
+        
+        @self.app.callback(
+            Output({'type': 'save-calibration', 'index': MATCH}, 'n_clicks'),
+            [Input({'type': 'save-calibration', 'index': MATCH}, 'n_clicks')],
+            prevent_initial_call=True
+        )
+        def save_calibration(n_clicks):
+            if n_clicks:
+                self.calibrator.save_calibration()
+            return n_clicks
+        
     def video_feed(self, camera_id: int):
         return Response(self.generate_frames(camera_id),
                        mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -650,6 +934,68 @@ class DashboardServer:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
+    def calibration_feed(self, camera_id: int):
+        return Response(self.generate_calibration_frames(camera_id),
+                       mimetype='multipart/x-mixed-replace; boundary=frame')
+
+    def generate_calibration_frames(self, camera_id: int):
+        blank_frame_cache = None
+        last_frame = None
+        
+        while True:
+            pipeline = self.vision_manager.get_pipeline(camera_id)
+            
+            if not pipeline:
+                if blank_frame_cache is None:
+                    blank = 255 * cv2.ones((480, 640, 3), dtype='uint8')
+                    cv2.putText(blank, "Camera Not Available", (180, 240), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 1, (100, 100, 100), 2)
+                    ret, buffer = cv2.imencode('.jpg', blank)
+                    blank_frame_cache = buffer.tobytes()
+                
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + blank_frame_cache + b'\r\n')
+                time.sleep(0.1)
+                continue
+            
+            frame = pipeline.cam.get_raw_frame()
+            
+            if frame is None:
+                if last_frame is not None:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
+                time.sleep(0.05)
+                continue
+            
+            annotated_frame, is_good_sample, status = self.calibrator.process_frame(frame, auto_capture=True)
+            
+            if self.calibrator.try_auto_capture():
+                cv2.rectangle(annotated_frame, (0, 0), (annotated_frame.shape[1], annotated_frame.shape[0]), 
+                             (0, 255, 0), 10)
+                cv2.putText(annotated_frame, "CAPTURED!", (annotated_frame.shape[1]//2 - 100, annotated_frame.shape[0]//2), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+            
+            if annotated_frame is None:
+                if last_frame is not None:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
+                time.sleep(0.05)
+                continue
+            
+            encode_params = [
+                cv2.IMWRITE_JPEG_QUALITY, 70,
+                cv2.IMWRITE_JPEG_OPTIMIZE, 1,
+            ]
+            
+            ret, buffer = cv2.imencode('.jpg', annotated_frame, encode_params)
+            frame_bytes = buffer.tobytes()
+            last_frame = frame_bytes
+            
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            
+            time.sleep(0.03)  # ~30 FPS
+
     def start_server(self):
         port = 5800 + self.camera_id
         print(f"\n{'='*50}")
@@ -695,6 +1041,40 @@ class DashboardServer:
                     background-color: #CDA646;
                     border-radius: 8px;
                     box-shadow: none;
+                }
+                .custom-tab {
+                    background-color: #161616 !important;
+                    color: #CCC9CA !important;
+                    border: none !important;
+                    padding: 12px 24px !important;
+                    font-size: 16px !important;
+                    font-weight: 500 !important;
+                    border-bottom: 3px solid transparent !important;
+                }
+                .custom-tab:hover {
+                    background-color: #2a2a2a !important;
+                }
+                .custom-tab--selected {
+                    background-color: #161616 !important;
+                    color: #CDA646 !important;
+                    border-bottom: 3px solid #CDA646 !important;
+                }
+                ::-webkit-scrollbar {
+                    width: 10px;
+                }
+                ::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                ::-webkit-scrollbar-thumb {
+                    background: #CDA646;
+                    border-radius: 5px;
+                }
+                ::-webkit-scrollbar-thumb:hover {
+                    background: #b8923d;
+                }
+                * {
+                    scrollbar-width: thin;
+                    scrollbar-color: #CDA646 transparent;
                 }
             </style>
         </head>
