@@ -101,14 +101,27 @@ class DashboardServer:
                             }),
                             html.Br(),
                             html.Div([
+                                html.Button("Reload", id={'type': 'reload', 'index': cam_id}, style={
+                                    "margin": "10px 5px",
+                                    "font-size": "14px",
+                                    "color": "#161616",
+                                    "background-color": "rgba(100, 200, 255, 1)",
+                                    "border": "none",
+                                    "padding": "8px 16px",
+                                    "width": "145px",
+                                    "height": "40px",
+                                    "border-radius": "20px",
+                                    "cursor": "pointer",
+                                    "font-weight": "bold"
+                                }),
                                 html.Button("Reboot", id={'type': 'reboot', 'index': cam_id}, style={
-                                    "margin-top": "10px",
+                                    "margin": "10px 5px",
                                     "font-size": "14px",
                                     "color": "#161616",
                                     "background-color": "rgba(255, 204, 74, 1)",
                                     "border": "none",
                                     "padding": "8px 16px",
-                                    "width": "300px",
+                                    "width": "145px",
                                     "height": "40px",
                                     "border-radius": "20px",
                                     "cursor": "pointer",
@@ -615,6 +628,7 @@ class DashboardServer:
                                 lambda cid=cam_id: self.calibration_feed(cid))
 
     def setup_slider_callbacks(self):
+        from dash import no_update
         from camera.preprocess import SET_DIVERGENCE_GAIN, SET_TARGET_BRIGHTNESS, SET_NUM_BINS, SET_MIN_CORR_STRENGTH
         from localization.detection import SET_THRESH_STEP, SET_THRESH_WIN
         from localization.visiony import CONF, ASPECT_THRESH
@@ -738,6 +752,16 @@ class DashboardServer:
         def reboot_system(n_clicks):
             if n_clicks:
                 os.system('sudo reboot')
+            return n_clicks
+        
+        @self.app.callback(
+            Output({'type': 'reload', 'index': MATCH}, 'n_clicks'),
+            [Input({'type': 'reload', 'index': MATCH}, 'n_clicks')],
+            prevent_initial_call=True
+        )
+        def reload_pipeline(n_clicks):
+            if n_clicks:
+                Thread(target=self.vision_manager.reload_all_pipelines, daemon=True).start()
             return n_clicks
         
         self.setup_calibration_callbacks()

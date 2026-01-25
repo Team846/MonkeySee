@@ -213,11 +213,6 @@ def save_full_calibration(path, ax, bx, cx_fit, ay, by, cy_fit, w, h, name):
 
 
 def get_camera_serial(index: int) -> str:
-    """
-    Cross-platform camera serial number retrieval.
-    On Linux, uses pyudev.
-    On macOS, parses system_profiler output.
-    """
     system = platform.system()
     
     if system == "Linux" and pyudev is not None:

@@ -52,11 +52,13 @@ class CameraPipeline:
             self.ntables = pipeline.ntables.GamePieceNTables(self.camera_id)
     
     def process_frame(self):
-        if not self.enabled:
+        if not self.enabled or not self.running:
             time.sleep(0.05)
             return
         
         try:
+            if not self.running:
+                return
             frame, timestamp = self.cam.get_frame()
             
             if frame is None:
@@ -144,10 +146,16 @@ class CameraPipeline:
     
     def stop(self):
         self.running = False
-        self.cam.release()
+        try:
+            with self.lock:
+                if self.cam:
+                    self.cam.release()
+        except Exception as e:
+            logger.Warn(f"Error releasing camera {self.camera_id}: {e}")
 
 class VisionManager:
     def __init__(self, config_path: str):
+        self.config_path = config_path
         with open(config_path, 'r') as f:
             self.config = json.load(f)
         
@@ -212,4 +220,73 @@ class VisionManager:
     def toggle_camera(self, camera_id: int, enabled: bool):
         if camera_id in self.pipelines:
             self.pipelines[camera_id].set_enabled(enabled)
+    
+    def reload_all_pipelines(self):
+        try:
+            logger.Log("Reloading all pipelines...")
+            
+            for cam_pipeline in list(self.pipelines.values()):
+                try:
+                    cam_pipeline.running = False
+                except:
+                    pass
+            
+            time.sleep(1.5)
+            
+            for cam_pipeline in list(self.pipelines.values()):
+                try:
+                    if hasattr(cam_pipeline, 'cam') and cam_pipeline.cam:
+                        cam_pipeline.cam.release()
+                except:
+                    pass
+            
+            self.threads = []
+            
+            import platform
+            if platform.system() == "Windows":
+                time.sleep(1.5)
+            else:
+                time.sleep(0.5)
+            
+            with open(self.config_path, 'r') as f:
+                self.config = json.load(f)
+            
+            try:
+                pipeline.ntables.reset_instance()
+            except:
+                pass
+            
+            if "network_tables" in self.config and "server" in self.config["network_tables"]:
+                try:
+                    pipeline.ntables.set_server(self.config["network_tables"]["server"])
+                except:
+                    pass
+            
+            if "valid_apriltag_ids" in self.config:
+                try:
+                    localization.apriltag_solution.SET_VALID_TAG_IDS(self.config["valid_apriltag_ids"])
+                except:
+                    pass
+            
+            self.pipelines = {}
+            for camera_config in self.config["cameras"]:
+                try:
+                    self.pipelines[camera_config["id"]] = CameraPipeline(camera_config)
+                except Exception as e:
+                    logger.Warn(f"Error creating pipeline for camera {camera_config.get('id', 'unknown')}: {e}")
+            
+            for cam_pipeline in self.pipelines.values():
+                try:
+                    thread = Thread(target=self._run_pipeline, args=(cam_pipeline,), daemon=True)
+                    thread.start()
+                    self.threads.append(thread)
+                except:
+                    pass
+            
+            logger.Log("All pipelines reloaded successfully")
+                
+        except Exception as e:
+            logger.Warn(f"Error during pipeline reload: {e}")
+            import traceback
+            logger.Warn(traceback.format_exc())
 

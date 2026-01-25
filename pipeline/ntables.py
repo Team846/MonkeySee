@@ -9,6 +9,16 @@ def set_server(server: str):
     global _server_address
     _server_address = server
 
+def reset_instance():
+    global _nt_instance, _initialized
+    if _nt_instance is not None:
+        try:
+            if _initialized:
+                _nt_instance.stopClient()
+        except AttributeError:
+            pass
+    _initialized = False
+
 def get_nt_instance():
     global _nt_instance, _initialized
     if _nt_instance is None:

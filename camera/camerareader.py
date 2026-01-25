@@ -92,7 +92,6 @@ class CameraReader:
         return None, time_ns()
 
     def get_raw_frame(self) -> Optional[MatLike]:
-        """Get a raw frame without timestamp (for calibration)."""
         frame, _ = self.get_frame()
         return frame
 
