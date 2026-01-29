@@ -34,8 +34,7 @@ class CameraReader:
 
         self.cap: Optional[cv2.VideoCapture] = None
         self.fail_count = 0
-
-        self._open_camera()
+        self._opened = False
 
     def _open_camera(self):
         logger.Log("Opening camera...")
@@ -66,9 +65,21 @@ class CameraReader:
             self.cap.set(cv2.CAP_PROP_FPS, 60)
 
         self.fail_count = 0
-        logger.Log("Camera opened successfully")
+        try:
+            w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = float(self.cap.get(cv2.CAP_PROP_FPS))
+            fourcc = int(self.cap.get(cv2.CAP_PROP_FOURCC))
+            fourcc_str = "".join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)])
+            backend = int(self.cap.get(cv2.CAP_PROP_BACKEND))
+            logger.Log(f"Camera opened successfully: {w}x{h} @ {fps:.1f}fps fourcc={fourcc_str} backend={backend}")
+        except Exception:
+            logger.Log("Camera opened successfully")
 
     def get_frame(self) -> Tuple[Optional[MatLike], int]:
+        if not self._opened:
+            self._open_camera()
+            self._opened = True
         if not self.cap or not self.cap.isOpened():
             logger.Warn("Camera not open, reopening...")
             self._open_camera()

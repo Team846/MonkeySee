@@ -7,8 +7,6 @@ import time
 from threading import Thread
 from util.config import ConfigCategory
 import os
-from calibration.charuco_calibrator import CharucoCalibrator
-
 class DashboardServer:
     config_category = ConfigCategory("HTMLServer")
     framecomp_slider = config_category.getFloatConfig("framecomp_slider", 0.5)
@@ -20,11 +18,18 @@ class DashboardServer:
         self.app = Dash(__name__, server=self.server, suppress_callback_exceptions=True)
         self.app.index_string = self.index_string()
         
-        self.calibrator = CharucoCalibrator(camera_id)
+        self._calibrator = None
         
         self.setup_layout()
         self.setup_callbacks()
         self.start_server_thread()
+
+    @property
+    def calibrator(self):
+        if self._calibrator is None:
+            from calibration.checkerboard_calibrator import CheckerboardCalibrator
+            self._calibrator = CheckerboardCalibrator(self.camera_id)
+        return self._calibrator
 
     def create_detection_content(self, cam_id):
         pipeline = self.vision_manager.get_pipeline(cam_id)
@@ -198,7 +203,7 @@ class DashboardServer:
             
             html.Div(id='tab-content', children=camera_content),
             
-            dcc.Interval(id="update-interval", interval=1000, n_intervals=0),
+            dcc.Interval(id="update-interval", interval=500, n_intervals=0),  # 500ms for faster progress updates
         ], style={
             "background-color": "#161616",
             "color": "#FFF",
@@ -356,7 +361,8 @@ class DashboardServer:
                     html.Div([
                         html.P("https://calib.io/pages/camera-calibration-pattern-generator", style={'margin': '10px 0'}),
                         html.P("11 rows, 8 columns", style={'margin': '10px 0'}),
-                        html.P("15mm ChArUco markers. Class 4x4.", style={'margin': '10px 0'}),
+                        html.P("15mm ChArUco checkers. Class 4x4.", style={'margin': '10px 0'}),
+                        html.P("Printed to 21.2mm checkers, 15.55mm markers", style={'margin': '10px 0'}),
                     ], style={
                         'color': '#CCC9CA',
                         'font-size': '14px',
@@ -775,13 +781,38 @@ class DashboardServer:
         )
         def update_calibration_status(n_intervals):
             status = self.calibrator.get_status()
+            progress_pct = status['progress'] * 100
+            progress_color = '#00ff00' if status['is_calibrating'] else '#ffaa00'
+            
+            # Show progress bar during calibration
+            progress_bar = None
+            if status['is_calibrating']:
+                progress_bar = html.Div([
+                    html.Div(style={
+                        'width': f'{progress_pct:.1f}%',
+                        'height': '20px',
+                        'background-color': '#00ff00',
+                        'transition': 'width 0.3s ease',
+                        'border-radius': '4px',
+                    }),
+                ], style={
+                    'width': '100%',
+                    'height': '20px',
+                    'background-color': '#333',
+                    'border-radius': '4px',
+                    'overflow': 'hidden',
+                    'margin': '5px 0',
+                })
+            
             return html.Div([
                 html.Div(f"Status: {status['status_message']}", style={'margin': '5px 0'}),
                 html.Div(f"Samples: {status['num_samples']}/{status['target_samples']}", style={'margin': '5px 0'}),
-                html.Div(f"Progress: {status['progress']*100:.0f}%", style={'margin': '5px 0'}),
+                html.Div(f"Progress: {progress_pct:.1f}%", style={'margin': '5px 0'}),
+                progress_bar if progress_bar else html.Div(),
                 html.Div(
-                    "✓ Ready to calibrate" if status['is_ready'] else "Need more samples",
-                    style={'margin': '5px 0', 'color': '#00ff00' if status['is_ready'] else '#ffaa00'}
+                    "✓ Ready to calibrate" if status['is_ready'] and not status['is_calibrating'] else 
+                    ("Calibrating..." if status['is_calibrating'] else "Need more samples"),
+                    style={'margin': '5px 0', 'color': progress_color}
                 ),
             ])
         
@@ -991,7 +1022,19 @@ class DashboardServer:
                 time.sleep(0.05)
                 continue
             
-            annotated_frame, is_good_sample, status = self.calibrator.process_frame(frame, auto_capture=True)
+            try:
+                annotated_frame, is_good_sample, status = self.calibrator.process_frame(frame, auto_capture=True)
+            except Exception as e:
+                import traceback
+                from util.logger import Logger
+                logger = Logger("DashboardServer")
+                logger.Error(f"Error processing calibration frame: {e}")
+                logger.Error(traceback.format_exc())
+                if last_frame is not None:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
+                time.sleep(0.05)
+                continue
             
             if self.calibrator.try_auto_capture():
                 cv2.rectangle(annotated_frame, (0, 0), (annotated_frame.shape[1], annotated_frame.shape[0]), 

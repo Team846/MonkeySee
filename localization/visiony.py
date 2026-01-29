@@ -1,14 +1,20 @@
 from util.config import ConfigCategory, Config
-from ultralytics import YOLO
 import cv2
-from time import sleep
-
-model = YOLO("algae_ncnn_model", task="detect")
 
 pref_category = ConfigCategory(f"visionY")
 
 CONF = pref_category.getFloatConfig("CONFIDENCE", 0.35)
 ASPECT_THRESH = pref_category.getFloatConfig("ASPECT_THRESH", 0.3)
+
+_model = None
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        from ultralytics import YOLO
+        _model = YOLO("algae_ncnn_model", task="detect")
+    return _model
 
 
 def runPipeline(frame):
@@ -19,6 +25,7 @@ def runPipeline(frame):
     boxes = []
 
     try:
+        model = _get_model()
         results = model.predict(f, conf=CONF.valueFloat(), imgsz=256, verbose=False)
 
         for result in results:

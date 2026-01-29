@@ -1,4 +1,3 @@
-import pipeline.htmlserver
 import pipeline.ntables
 from pipeline.visionmanager import VisionManager
 import argparse
@@ -19,6 +18,7 @@ if __name__ == "__main__":
 
     print(f"Using config: {config_file}")
     vision_manager = VisionManager(config_file)
+    import pipeline.htmlserver
     servers = []
     for camera_id in vision_manager.get_all_pipelines().keys():
         server = pipeline.htmlserver.DashboardServer(vision_manager, camera_id)

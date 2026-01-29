@@ -3,7 +3,7 @@ import numpy as np
 from cv2.typing import MatLike
 from util.config import ConfigCategory, Config
 from typing import Tuple
-from numba import njit
+from util.numba_utils import njit_cached
 
 pref_category = ConfigCategory("Preprocessing")
 
@@ -13,7 +13,7 @@ min_corr_strength = pref_category.getFloatConfig("min_corr_strength", 0.1)
 corr_divisor = pref_category.getFloatConfig("corr_divisor", 400.0)
 divergence_gain = pref_category.getFloatConfig("divergence_gain", 1.5)
 
-@njit
+@njit_cached()
 def COMPUTE_CORRECTION_MATRIX(image: np.ndarray, bins_per_side: int, target_brightness: int) -> np.ndarray:
     height, width = image.shape
     bin_height = height // bins_per_side
@@ -44,7 +44,7 @@ def BIN_BASED_CORRECT(image: np.ndarray, acc_num_bins: int, target_brightness: i
 
     return image.astype(np.float32) + correction_matrix * corr_strength
 
-@njit
+@njit_cached()
 def DIVERGING_MOD(image: np.ndarray, divergence_gain: float) -> np.ndarray:
     mean = np.mean(image)
 

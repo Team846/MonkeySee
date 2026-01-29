@@ -30,11 +30,14 @@ parameters.adaptiveThreshWinSizeMin = min_thresh_win.valueInt()
 parameters.adaptiveThreshWinSizeMax = max_thresh_win.valueInt()
 parameters.adaptiveThreshWinSizeStep = thresh_step.valueInt()
 
-detector = cv2.aruco.ArucoDetector(dictionary, parameters)
+_detector = cv2.aruco.ArucoDetector(dictionary, parameters) if hasattr(cv2.aruco, "ArucoDetector") else None
 
 def DETECT_TAGS(image: MatLike):
-    global detector
-    corners, IDs, _ = detector.detectMarkers(image)
+    global _detector
+    if _detector is not None:
+        corners, IDs, _ = _detector.detectMarkers(image)
+    else:
+        corners, IDs, _ = cv2.aruco.detectMarkers(image, dictionary, parameters=parameters)
     return (corners, IDs.flatten()) if IDs is not None else (corners, None)
 
 def ANNOTATE_TAGS(image: MatLike, corners, IDs) -> MatLike:

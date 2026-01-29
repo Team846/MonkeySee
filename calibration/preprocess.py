@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from cv2.typing import MatLike
 from typing import Tuple
-from numba import njit
+from util.numba_utils import njit_cached
 
 acc_num_bins = 1200
 target_brightness = 155
@@ -10,7 +10,7 @@ min_corr_strength = 0.1
 corr_divisor = 400.0
 divergence_gain = 1.5
 
-@njit(cache=True, fastmath=True)
+@njit_cached(fastmath=True)
 def COMPUTE_CORRECTION_MATRIX(image: np.ndarray, bins_per_side: int, target_brightness: int) -> np.ndarray:
     height, width = image.shape
     bin_height = height // bins_per_side
@@ -44,7 +44,7 @@ def BIN_BASED_CORRECT(image: np.ndarray, acc_num_bins: int, target_brightness: i
 
     return image.astype(np.float32) + correction_matrix * corr_strength
 
-@njit(cache=True, fastmath=True)
+@njit_cached(fastmath=True)
 def DIVERGING_MOD(image: np.ndarray, divergence_gain: float) -> np.ndarray:
     mean = np.mean(image)
     inv_mean = 1.0 / mean if mean > 0 else 1.0

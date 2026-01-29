@@ -1,4 +1,4 @@
-opencv-python
+opencv-contrib-python==4.5.4.60
 numpy
 dash==2.18.2
 Flask

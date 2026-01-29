@@ -9,8 +9,8 @@ REM ========================================
 REM Configuration
 set SOURCE_DIR=X:\Vision\MonkeySee
 set TARGET_USER=orangepi
-set TARGET_HOST=funkyvision2
-set TARGET_PORT=5806
+set TARGET_HOST=10.8.46.204
+set TARGET_PORT=22
 set TARGET_DIR=/home/orangepi/MonkeySee
 
 REM Parse command line arguments

@@ -2,9 +2,9 @@
   "development": false,
   "cameras": [
     {
-      "id": 1,
-      "name": "ATCam1",
-      "device_id": "ATCam1",
+      "id": 4,
+      "name": "ATCam4",
+      "device_id": "ATCam4",
       "pipeline": "apriltag",
       "enabled": true
     }
@@ -30,6 +30,7 @@
     "corr_divisor": { "value": "400.0", "type": 2 },
     "divergence_gain": { "value": "1.5", "type": 2 }
   },
+  "Numba": { "cache": { "value": "1", "type": 1 } },
   "HTMLServer": { "framecomp_slider": { "value": "0.5", "type": 2 } },
   "AprilTag0": {
     "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
@@ -47,7 +48,7 @@
     "TAG_H_in": { "value": "6.5", "type": 2 }
   },
   "AprilTag3": {
-    "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
+    "CAM_MOUNT_H_deg": { "value": "90.0", "type": 2 },
     "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
     "TAG_H_in": { "value": "6.5", "type": 2 }
   },

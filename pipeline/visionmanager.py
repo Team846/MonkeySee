@@ -3,8 +3,6 @@ import cv2
 import time
 import localization.detection
 import localization.apriltag_solution
-import localization.visiony
-import localization.gamepiece_solution
 import pipeline.ntables
 from time import time_ns
 from typing import List, Dict
@@ -48,8 +46,12 @@ class CameraPipeline:
             localization.apriltag_solution.SET_CAM(self.camera_id)
             self.ntables = pipeline.ntables.AprilTagNTables(self.camera_id)
         else:
-            localization.gamepiece_solution.SET_CAM(self.camera_id)
+            from localization import gamepiece_solution
+            from localization import visiony
+            gamepiece_solution.SET_CAM(self.camera_id)
             self.ntables = pipeline.ntables.GamePieceNTables(self.camera_id)
+            self._visiony = visiony
+            self._gamepiece_solution = gamepiece_solution
     
     def process_frame(self):
         if not self.enabled or not self.running:
@@ -76,8 +78,8 @@ class CameraPipeline:
                     self.camera_id, frame, corners, ids
                 )
             else:
-                annotated_frame, rawDets = localization.visiony.runPipeline(frame)
-                detections = localization.gamepiece_solution.CALCULATE_PARTIAL_SOLUTION(self.camera_id, frame, rawDets)
+                annotated_frame, rawDets = self._visiony.runPipeline(frame)
+                detections = self._gamepiece_solution.CALCULATE_PARTIAL_SOLUTION(self.camera_id, frame, rawDets)
             
             processing_latency = (time_ns() - timestamp) / 1e9
             
