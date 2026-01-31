@@ -3,14 +3,19 @@ from util.logger import Logger
 from cv2.typing import MatLike
 from typing import List, Tuple
 import math
-from localization.undistort import load_calibration, GET_CAMERA_ANGLES
+from localization.undistort import load_calibration, GET_CAMERA_ANGLES, calibrations
 
 logger = Logger("GamePieceSolution")
 
 pref_category = ConfigCategory(f"GamePieceSolution")
-
-WD = pref_category.getFloatConfig("WD", 15.5)
+WD = pref_category.getFloatConfig("WD", 7)
 ONT = pref_category.getFloatConfig("ONT", 10.0)
+CAM_HEIGHT = pref_category.getFloatConfig("CAM_HEIGHT", 14.5) 
+MIN_DISTANCE = pref_category.getFloatConfig("MIN_DISTANCE", 2.0) 
+MAX_DISTANCE = pref_category.getFloatConfig("MAX_DISTANCE", 200.0)  
+SMOOTHING = pref_category.getFloatConfig("SMOOTHING", 0.2)  
+
+_prev_optimal_dist: float = 0.0
 
 def SET_CAM(pipeline: int):
     load_calibration(pipeline)
@@ -49,6 +54,34 @@ def pixel_to_angles(x_pos: float, y_pos: float, frame: MatLike, camera_id: int) 
     angle_x, angle_y = GET_CAMERA_ANGLES(x_img, y_img, frame, camera_id)
     
     return angle_x, angle_y
+
+def horizontal_angle(x_pos: float, frame: MatLike, camera_id: int) -> float:
+    global calibrations
+    
+    cal = calibrations.get(camera_id, {})
+    q = cal.get("x", {"a": 0, "b": 0, "c": 0})
+    
+    meta = cal.get("meta", {})
+    w = meta.get("resolution", {}).get("width", 800)
+    
+    x_pos *= w / 256.0
+    
+    return math.degrees(q["a"] * x_pos + q["b"] * x_pos**3 + q["c"] * x_pos**5)
+
+def vertical_angle(y_pos: float, frame: MatLike, camera_id: int) -> float:
+    global calibrations
+    
+    cal = calibrations.get(camera_id, {})
+    q = cal.get("y", {"a": 0, "b": 0, "c": 0})
+    
+    meta = cal.get("meta", {})
+
+    h = 256 #fix later
+    
+    y_pos *= h / 256.0
+    
+    return math.degrees(q["a"] * y_pos + q["b"] * y_pos**3 + q["c"] * y_pos**5)
+
 
 def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, objs: List[Tuple[float, float]]) -> List[Detection]:
     global WD, ONT
@@ -89,4 +122,44 @@ def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, objs: List[Tuple[
             logger.Error(f"Failed to process object {obj}: {e}")
     
     return result
+
+
+#detections: List[Detection]
+def CALCULATE_OPTIMAL_POINT_SOLUTION(camera_id: int, image: MatLike, optimal_point: Tuple[float, float], raw_boxes: List[Tuple[float, float, float, float]]) -> Tuple[float, float]:
+
+    global _prev_optimal_dist, calibrations
+    
+    try:
+        x, y = optimal_point
+
+
+        # x_centered = x - 640 / 2
+        # x_in_256 = x_centered * 256 / 640
+        # theta_h = horizontal_angle(x_in_256, image, camera_id)
+        # y_centered = 640 / 2 - y
+        # y_in_256 = y_centered * 256 / 640
+        # CAMERA_PITCH = 0#32.93 
+        # camera_pitch_rad = math.radians(CAMERA_PITCH)
+        # elevation_angle = math.radians(y_in_256 / 128.0 * 46.5 / 2.0)
+        # print(f"elevation angle: {elevation_angle}")
+        # depression_angle = -(elevation_angle - camera_pitch_rad)
+        # raw_dist = abs(CAM_HEIGHT.valueFloat() / math.tan(depression_angle))
+        # return (raw_dist, theta_h)
+
+        angle_x, angle_y = pixel_to_angles(x, y, image, camera_id)
+
+        angle_x = (x-128)/(256.0) * 60.5
+        CAMERA_PITCH = 0  
+        camera_pitch_rad = math.radians(CAMERA_PITCH)
+        depression_angle = -(math.radians(angle_y) - camera_pitch_rad)
+        try:
+            raw_dist = abs(CAM_HEIGHT.valueFloat() / math.tan(depression_angle))
+        except Exception as e:
+            logger.Error(f"Failed to calculate distance: {e}")
+            raw_dist = 0.0
+        return (raw_dist,angle_x)
+        
+    except Exception as e:
+        logger.Error(f"Failed to calculate optimal point solution: {e}")
+        return (0.0, 0.0)
 

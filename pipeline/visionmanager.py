@@ -78,8 +78,14 @@ class CameraPipeline:
                     self.camera_id, frame, corners, ids
                 )
             else:
-                annotated_frame, rawDets = self._visiony.runPipeline(frame)
-                detections = self._gamepiece_solution.CALCULATE_PARTIAL_SOLUTION(self.camera_id, frame, rawDets)
+                annotated_frame, rawDets, optimal_point = localization.visiony.runPipeline(frame)
+                detections = localization.gamepiece_solution.CALCULATE_PARTIAL_SOLUTION(self.camera_id, frame, rawDets)
+                
+                optimal_solution = None
+                if optimal_point is not None:
+                    optimal_solution = localization.gamepiece_solution.CALCULATE_OPTIMAL_POINT_SOLUTION(
+                        self.camera_id, frame, optimal_point, rawDets#detections, rawDets
+                    )
             
             processing_latency = (time_ns() - timestamp) / 1e9
             
@@ -107,7 +113,10 @@ class CameraPipeline:
             if self.pipeline_type == "apriltag":
                 self.ntables.updateFrameNum(self.frame_num)
             
-            self.ntables.execute(detections, processing_latency)
+            if self.pipeline_type == "apriltag":
+                self.ntables.execute(detections, processing_latency)
+            else:
+                self.ntables.execute(detections, processing_latency, optimal_solution)
             
         except Exception as e:
             logger.Warn(f"Error in camera {self.camera_id}: {e}")

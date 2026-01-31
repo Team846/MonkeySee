@@ -45,6 +45,7 @@ def load_all_calibrations():
         _calibrations_loaded = True
 
 def load_calibration(camera_id: int) -> dict:
+    
     global calibrations
     
     if not _calibrations_loaded:
@@ -52,6 +53,8 @@ def load_calibration(camera_id: int) -> dict:
     
     if camera_id in calibrations:
         return calibrations[camera_id]
+    
+    return {}
     
     logger.Warn(f"No calibration found for camera {camera_id}. Please calibrate using /calibration tab.")
     return {}
@@ -69,13 +72,18 @@ def GET_CAMERA_ANGLES(
     camera_id: int,
     unused_param: np.ndarray = None,
 ) -> Tuple[float, float]:
+    
     global _camera_matrices, _dist_coeffs
     
     if not _calibrations_loaded:
         load_all_calibrations()
     
     if camera_id not in _camera_matrices or camera_id not in _dist_coeffs:
-        logger.Error(f"No OpenCV calibration found for camera {camera_id}. Please calibrate using the /calibration tab.")
+        # Only log once per camera to avoid spamming
+        if not hasattr(GET_CAMERA_ANGLES, "_warned"): GET_CAMERA_ANGLES._warned = set()
+        if camera_id not in GET_CAMERA_ANGLES._warned:
+            logger.Warn(f"No OpenCV calibration found for camera {camera_id}. Using default angles (0.0, 0.0). Please calibrate using the /calibration tab.")
+            GET_CAMERA_ANGLES._warned.add(camera_id)
         return (0.0, 0.0)
     
     camera_matrix = _camera_matrices[camera_id]

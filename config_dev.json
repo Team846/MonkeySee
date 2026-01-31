@@ -2,10 +2,10 @@
   "development": true,
   "cameras": [
     {
-      "id": 0,
+      "id": 1,
       "name": "Dev Camera",
       "device_id": 0,
-      "pipeline": "apriltag",
+      "pipeline": "gpd",
       "enabled": true
     }
   ],

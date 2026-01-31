@@ -1,5 +1,6 @@
 from util.config import ConfigCategory, Config
 import cv2
+from localization.clustering import get_processor
 
 pref_category = ConfigCategory(f"visionY")
 
@@ -13,9 +14,15 @@ def _get_model():
     global _model
     if _model is None:
         from ultralytics import YOLO
-        _model = YOLO("algae_ncnn_model", task="detect")
+        _model = YOLO("fuel_ncnn_model", task="detect")
     return _model
 
+_clustering_processor = None
+
+def _get_clustering_processor():
+    _clustering_processor = get_processor(256, 256)
+        
+    return _clustering_processor
 
 def runPipeline(frame):
     global CONF, ASPECT_THRESH
@@ -46,5 +53,11 @@ def runPipeline(frame):
     except Exception as e:
         print(e)
 
-    return f, boxes
+    optimal_point = None
+    if boxes:
+        processor = _get_clustering_processor()
+        f = processor.annotate_frame(f, boxes)
+        optimal_point = processor.last_target
+
+    return f, boxes, optimal_point
 

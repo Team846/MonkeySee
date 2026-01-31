@@ -18,21 +18,44 @@
     }
   },
   "1": {
-    "x": {
-      "a": 0.00186708444137548,
-      "b": -6.062311048890719e-10,
-      "c": 1.032643649277746e-15
-    },
-    "y": {
-      "a": 0.001668055532514296,
-      "b": 5.601926295041498e-10,
-      "c": -4.642877147726826e-15
-    },
     "meta": {
       "resolution": {
         "width": 800,
         "height": 600
-      }
+      },
+      "camera_matrix": [
+        [
+          676.9271669351431,
+          0.0,
+          400.0
+        ],
+        [
+          0.0,
+          665.8391148037334,
+          300.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "dist_coeffs": [
+        -0.04789828834047233,
+        0.17157665443636352,
+        0.0,
+        0.0,
+        -0.2941914260854137
+      ],
+      "reprojection_error": 0.8003225094965464,
+      "num_samples": 33,
+      "calibration_time": 29.767707586288452,
+      "fov": {
+        "horizontal": 61.15815050336061,
+        "vertical": 48.50877687318391,
+        "diagonal": 73.23085871133337
+      },
+      "distortion_viz_base64": "iVBORw0KGgoAAAANSUhEUgAAAZAAAAEsCAIAAABi1XKVAAAgAElEQVR4AezBf2jVdR83/ue7tVmLnIHTcqRMoRtxTpl5sT8K42THFNPnB4Szu91/HO/FWKv9kc3BoSNOPHFgLvtjXWuM9vUQ9>"
     }
   },
   "3": {

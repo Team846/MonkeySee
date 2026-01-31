@@ -514,10 +514,10 @@ class DashboardServer:
                       marks={5.0: '5.0', 15.5: '15.5', 30.0: '30.0'}, tooltip={"placement": "bottom", "always_visible": True}, className="funky-slider"),
             html.Br(),
             
-            html.Label("On Top Threshold (ONT)", style={"color": "#CCC9CA", "font-size": "16px", 'padding': '0 20px 0 15px'}),
-            dcc.Slider(id={'type': 'ont', 'index': cam_id}, min=0.0, max=20.0, step=1.0, value=ONT.valueFloat(),
-                      marks={0.0: '0.0', 10.0: '10.0', 20.0: '20.0'}, tooltip={"placement": "bottom", "always_visible": True}, className="funky-slider"),
-            html.Br(),
+            # html.Label("On Top Threshold (ONT)", style={"color": "#CCC9CA", "font-size": "16px", 'padding': '0 20px 0 15px'}),
+            # dcc.Slider(id={'type': 'ont', 'index': cam_id}, min=0.0, max=20.0, step=1.0, value=ONT.valueFloat(),
+            #           marks={0.0: '0.0', 10.0: '10.0', 20.0: '20.0'}, tooltip={"placement": "bottom", "always_visible": True}, className="funky-slider"),
+            # html.Br(),
             
             html.Label("Displayed Frame Quality", style={"color": "#CCC9CA", "font-size": "16px", 'padding': '0 20px 0 15px'}),
             dcc.Slider(id={'type': 'framecomp', 'index': cam_id}, min=0.05, max=1, step=0.05,
