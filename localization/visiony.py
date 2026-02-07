@@ -1,9 +1,9 @@
 from util.config import ConfigCategory, Config
 from ultralytics import YOLO
 import cv2
-from time import sleep
+from time import sleep 
 
-model = YOLO("fuel_rknn_model", task="detect")
+model = YOLO("largecolorless.pt", task="detect")
 
 pref_category = ConfigCategory(f"visionY")
 
@@ -14,7 +14,7 @@ ASPECT_THRESH = pref_category.getFloatConfig("ASPECT_THRESH", 0.3)
 def runPipeline(frame):
     global CONF, ASPECT_THRESH
 
-    f = cv2.resize(frame, (256, 256))
+    f = cv2.resize(frame, (640, 640))
 
     boxes = []
 

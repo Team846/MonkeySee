@@ -9,7 +9,7 @@ def test_inference():
     try:
         rknn = RKNN()
         ret = rknn.load_rknn(
-            '/home/orangepi/monkeyvisiongpd/GPD2026/best_rknn_model/best-rk3588.rknn')
+            '/home/orangepi/monkeyvisiongpd/MonkeySee/fuel_int8.rknn')
 
         if ret != 0:
             print("Load model failed")

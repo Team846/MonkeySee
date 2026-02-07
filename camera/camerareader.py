@@ -9,7 +9,7 @@ import os
 logger = Logger("Camera")
 
 
-class CameraReader:
+class CameraReader: 
     MAX_READ_RETRIES = 200
     REOPEN_SLEEP_S = 0.5
 
