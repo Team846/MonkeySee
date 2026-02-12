@@ -20,7 +20,8 @@ def runPipeline(frame):
 
     try:
         results = model.predict(f, conf=CONF.valueFloat(), imgsz=256, verbose=False)
-
+        #results = model.predict(f, conf=0, imgsz=640, verbose=False)  # set conf=0 to see everything
+        #print("Raw outputs:", results)
         for result in results:
             for box in result.boxes.xyxy:
                 x1, y1, x2, y2 = map(int, box)
