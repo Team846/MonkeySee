@@ -4,28 +4,32 @@ from localization.undistort import GET_CAMERA_ANGLES, load_calibration
 from util.config import ConfigCategory, Config
 from util.logger import Logger
 from cv2.typing import MatLike
-from typing import List, Set
+from typing import List, Set, Dict
 import math
 
 logger = Logger("AprilTagSolution")
 
 valid_tag_ids: Set[int] = set(range(1, 33))
 
-CAM_ANGLE_H = 0
-CAM_ANGLE_V = 0
-TAG_H = 0
+CAM_PARAMS: Dict[int, Dict[str, Config]] = {}
 
 def SET_VALID_TAG_IDS(tag_ids: List[int]):
     global valid_tag_ids
     valid_tag_ids = set(tag_ids)
     logger.Log(f"Valid AprilTag IDs: {sorted(valid_tag_ids)}")
 
-def SET_CAM(pipeline: int):
-    pref_category = ConfigCategory(f"AprilTag{pipeline}")
-    global CAM_ANGLE_H, CAM_ANGLE_V, TAG_H
-    CAM_ANGLE_H = pref_category.getFloatConfig("CAM_MOUNT_H_deg", 0.0)
-    CAM_ANGLE_V = pref_category.getFloatConfig("CAM_MOUNT_V_deg", 0.0)
-    TAG_H = pref_category.getFloatConfig("TAG_H_in", 6.5)
+def SET_CAM(pipeline: int, config_key: str = None):
+    section = config_key if config_key is not None else f"AprilTag{pipeline}"
+    pref_category = ConfigCategory(section)
+    CAM_PARAMS[pipeline] = {
+        "CAM_MOUNT_H_deg": pref_category.getFloatConfig("CAM_MOUNT_H_deg", 0.0),
+        "CAM_MOUNT_V_deg": pref_category.getFloatConfig("CAM_MOUNT_V_deg", 0.0),
+        "TAG_H_in": pref_category.getFloatConfig("TAG_H_in", 6.5),
+    }
+    logger.Log(f"Camera {pipeline} using config section {section}: "
+               f"H={CAM_PARAMS[pipeline]['CAM_MOUNT_H_deg'].valueFloat()}, "
+               f"V={CAM_PARAMS[pipeline]['CAM_MOUNT_V_deg'].valueFloat()}, "
+               f"TAG_H={CAM_PARAMS[pipeline]['TAG_H_in'].valueFloat()}")
     load_calibration(pipeline)
 
 class Detection:
@@ -50,12 +54,19 @@ class Detection:
         return self.__str__()
 
 def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, all_corners, all_IDs) -> List[Detection]:
-    global CAM_ANGLE_H, TAG_H, CAM_ANGLE_V
-
     result = []
 
     if all_IDs is None:
         return result
+
+    params = CAM_PARAMS.get(camera_id)
+    if params is None:
+        logger.Warn(f"No AprilTag params for camera {camera_id}; call SET_CAM first")
+        return result
+
+    cam_angle_h = params["CAM_MOUNT_H_deg"].valueFloat()
+    cam_angle_v = params["CAM_MOUNT_V_deg"].valueFloat()
+    tag_h = params["TAG_H_in"].valueFloat()
 
     for corners, tID in zip(all_corners, all_IDs):
         if tID not in valid_tag_ids:
@@ -88,14 +99,13 @@ def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, all_corners, all_
             camera_id,
             None,
         )
-        tx_c += CAM_ANGLE_H.valueFloat()
+        tx_c += cam_angle_h
 
-        r_cam: float = TAG_H.valueFloat() / abs(
-            math.tan(math.radians(ty_t + CAM_ANGLE_V.valueFloat()))
-            - math.tan(math.radians(ty_b + CAM_ANGLE_V.valueFloat()))
+        r_cam: float = tag_h / abs(
+            math.tan(math.radians(ty_t + cam_angle_v))
+            - math.tan(math.radians(ty_b + cam_angle_v))
         )
-        r_ground = r_cam / math.cos(math.radians(tx_c - CAM_ANGLE_H.valueFloat()))
+        r_ground = r_cam / math.cos(math.radians(tx_c - cam_angle_h))
         result.append(Detection(r_ground, tx_c, tID))
 
     return result
-

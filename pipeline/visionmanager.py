@@ -43,7 +43,8 @@ class CameraPipeline:
         self.running = True
         
         if self.pipeline_type == "apriltag":
-            localization.apriltag_solution.SET_CAM(self.camera_id)
+            apriltag_section = camera_config.get("apriltag_config", f"AprilTag{self.camera_id}")
+            localization.apriltag_solution.SET_CAM(self.camera_id, apriltag_section)
             self.ntables = pipeline.ntables.AprilTagNTables(self.camera_id)
         else:
             from localization import gamepiece_solution
