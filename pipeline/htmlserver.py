@@ -196,6 +196,7 @@ class DashboardServer:
             dcc.Tabs(id='tabs', value='detection', children=[
                 dcc.Tab(label='Detection', value='detection', className='custom-tab', selected_className='custom-tab--selected'),
                 dcc.Tab(label='Calibration', value='calibration', className='custom-tab', selected_className='custom-tab--selected'),
+                dcc.Tab(label='Focus', value='focus', className='custom-tab', selected_className='custom-tab--selected'),
             ], style={
                 'margin': '0 25px',
                 'border-bottom': '2px solid #CDA646',
@@ -478,6 +479,107 @@ class DashboardServer:
         })
     ])
 
+    def create_focus_tab(self, cam_id):
+        return html.Div([
+            html.Div([
+                html.Div([
+                    html.H4("Camera Focusing", style={
+                        'textAlign': 'left',
+                        'color': '#CCC9CA',
+                        'font-size': '18px',
+                        'font-weight': 'medium',
+                        'padding': '0px 0px 0px 7px',
+                    }),
+                    html.P("Rotate the lens to maximize the score. Ensure the camera is pointed at a highly textured surface (like an AprilTag or calibration board).", style={
+                        'color': '#CCC9CA',
+                        'font-size': '14px',
+                        'padding': '15px 20px',
+                        'margin': '15px 7px',
+                    }),
+                    html.Div([
+                        html.Button("Enable Focus Mode", id={'type': 'toggle-focus', 'index': cam_id}, style={
+                            "margin": "10px 5px",
+                            "font-size": "14px",
+                            "color": "#161616",
+                            "background-color": "rgba(255, 204, 74, 1)",
+                            "border": "none",
+                            "padding": "8px 16px",
+                            "width": "200px",
+                            "height": "40px",
+                            "border-radius": "20px",
+                            "cursor": "pointer",
+                            "font-weight": "bold"
+                        }),
+                    ], style={
+                        "display": "flex",
+                        "justify-content": "center",
+                        "align-items": "center",
+                        "padding": "10px",
+                    }),
+                    html.Div(id=f'focus-score-{cam_id}', children="Score: 0.0", style={
+                        'color': '#00ff00',
+                        'font-size': '48px',
+                        'font-weight': 'bold',
+                        'text-align': 'center',
+                        'padding': '20px',
+                        'margin-top': '20px'
+                    }),
+                ], style={
+                    "flex": "1",
+                    "padding": "10px",
+                    "color": "#FFF",
+                    "flex-direction": "column",
+                    "display": "flex",
+                    "flex-grow": "1",
+                    "min-width": "40%",
+                    "max-width": "50%",
+                    "box-sizing": "border-box",
+                    "overflow-y": "auto",
+                    "overflow-x": "hidden",
+                    "height": "85vh",
+                }),
+                html.Div([
+                    html.Div([
+                        html.Div(f"Focus Preview - Camera {cam_id}", style={
+                            'color': '#CDA646',
+                            'font-size': '12px',
+                            'font-weight': 'bold',
+                            'margin-bottom': '5px',
+                            'text-align': 'center',
+                        }),
+                        html.Img(
+                            src=f"/video_feed/{cam_id}",
+                            style={
+                                "width": "100%",
+                                "max-width": "650px",
+                                "max-height": "600px",
+                                "border": "3px solid #CDA646",
+                                "border-radius": "9px",
+                            }
+                        ),
+                    ], style={
+                        "display": "flex",
+                        "flex-direction": "column",
+                        "align-items": "center",
+                        "justify-content": "center",
+                    }),
+                ], style={
+                    "flex": "3",
+                    "display": "flex",
+                    "justify-content": "center",
+                    "align-items": "center",
+                    "padding": "20px",
+                    "height": "85vh",
+                })
+            ], style={
+                "display": "flex",
+                "flex-direction": "row",
+                "width": "100%",
+                "padding": "10px 10px",
+                "overflow-x": "hidden",
+            }),
+        ])
+
     def create_gamepiece_sliders(self, cam_id):
         from localization.visiony import CONF, ASPECT_THRESH
         from localization.gamepiece_solution import WD, ONT
@@ -535,6 +637,8 @@ class DashboardServer:
         def render_tab_content(tab):
             if tab == 'calibration':
                 return self.create_calibration_tab(self.camera_id)
+            elif tab == 'focus':
+                return self.create_focus_tab(self.camera_id)
             else:  # detection tab
                 return self.create_detection_content(self.camera_id)
         
@@ -771,6 +875,34 @@ class DashboardServer:
             return n_clicks
         
         self.setup_calibration_callbacks()
+        self.setup_focus_callbacks()
+
+    def setup_focus_callbacks(self):
+        cam_id = self.camera_id
+        
+        @self.app.callback(
+            Output(f'focus-score-{cam_id}', 'children'),
+            [Input('update-interval', 'n_intervals')]
+        )
+        def update_focus_score(n_intervals):
+            pipeline = self.vision_manager.get_pipeline(cam_id)
+            if pipeline and pipeline.focus_mode:
+                return f"Score: {pipeline.focus_score:.1f}"
+            return "Focus Mode Disabled"
+            
+        @self.app.callback(
+            Output({'type': 'toggle-focus', 'index': MATCH}, 'children'),
+            [Input({'type': 'toggle-focus', 'index': MATCH}, 'n_clicks')],
+            prevent_initial_call=True
+        )
+        def toggle_focus_mode(n_clicks):
+            if n_clicks:
+                pipeline = self.vision_manager.get_pipeline(cam_id)
+                if pipeline:
+                    pipeline.focus_mode = not pipeline.focus_mode
+                    return "Disable Focus Mode" if pipeline.focus_mode else "Enable Focus Mode"
+            from dash import no_update
+            return no_update
 
     def setup_calibration_callbacks(self):
         cam_id = self.camera_id

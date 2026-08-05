@@ -42,6 +42,10 @@ class CameraPipeline:
         self.lock = Lock()
         self.running = True
         
+        self.focus_mode = False
+        self.focus_score = 0.0
+
+        
         if self.pipeline_type == "apriltag":
             apriltag_section = camera_config.get("apriltag_config", f"AprilTag{self.camera_id}")
             localization.apriltag_solution.SET_CAM(self.camera_id, apriltag_section)
@@ -70,6 +74,18 @@ class CameraPipeline:
             
             self.frame_num += 1
             self.frame_num %= 500
+            
+            if self.focus_mode:
+                if len(frame.shape) == 3:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = frame
+                focus_score = cv2.Laplacian(gray, cv2.CV_64F).var()
+                with self.lock:
+                    self.focus_score = focus_score
+                    self.frame = frame
+                time.sleep(0.03)
+                return
             
             if self.pipeline_type == "apriltag":
                 frame = PROCESS_FRAME(frame)
