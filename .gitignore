@@ -30,4 +30,5 @@ env/
 temp_*/
 *.bak
 .DS_Store
+captures/
 
