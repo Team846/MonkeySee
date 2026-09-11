@@ -74,6 +74,9 @@ class DashboardServer:
                                 'gap': '5px',
                                 'margin-top': '5px',
                                 'padding': '0 0px',
+                                'max-height': '310px',
+                                'overflow-y': 'auto',
+                                'overflow-x': 'hidden',
                             }
                         ),
                         html.Br(),
@@ -883,7 +886,6 @@ class DashboardServer:
                         'padding': '10px',
                         'font-size': '14px',
                         'margin': '0 0px 20px 20px',
-                        'width': '100%',
                     }))
                 else:
                     detection_items.append(html.Div([
@@ -897,7 +899,6 @@ class DashboardServer:
                         'padding': '10px',
                         'font-size': '14px',
                         'margin': '0 0px 20px 20px',
-                        'width': '100%',
                     }))
             return detection_items
     
