@@ -1,8 +1,9 @@
 import cv2
 from cv2.typing import MatLike
 from util.logger import Logger
-from time import time_ns, sleep
+from time import time_ns, sleep, monotonic
 from typing import Tuple, Optional
+from threading import Lock
 import platform
 import os
 
@@ -12,6 +13,7 @@ logger = Logger("Camera")
 class CameraReader:
     MAX_READ_RETRIES = 200
     REOPEN_SLEEP_S = 0.5
+    STALE_FRAME_S = 0.5
 
     def __init__(self, camera_id: str, use_preprocessing: bool = False):
         self.camera_id = camera_id
@@ -36,7 +38,11 @@ class CameraReader:
         self.fail_count = 0
         self._opened = False
 
-    def _open_camera(self):
+        self._lock = Lock()
+        self._last_frame: Optional[MatLike] = None
+        self._last_frame_at = 0.0
+
+    def _open_camera_locked(self):
         logger.Log("Opening camera...")
 
         if self.cap:
@@ -77,36 +83,49 @@ class CameraReader:
             logger.Log("Camera opened successfully")
 
     def get_frame(self) -> Tuple[Optional[MatLike], int]:
-        if not self._opened:
-            self._open_camera()
-            self._opened = True
-        if not self.cap or not self.cap.isOpened():
-            logger.Warn("Camera not open, reopening...")
-            self._open_camera()
+        with self._lock:
+            if not self._opened:
+                self._open_camera_locked()
+                self._opened = True
+            if not self.cap or not self.cap.isOpened():
+                logger.Warn("Camera not open, reopening...")
+                self._open_camera_locked()
+                return None, time_ns()
+
+            ret, frame = self.cap.read()
+
+            if ret and frame is not None:
+                self.fail_count = 0
+                self._last_frame = frame
+                self._last_frame_at = monotonic()
+                return frame, time_ns()
+
+            self.fail_count += 1
+
+            if self.fail_count % 20 == 0:
+                logger.Warn(f"Camera read failed ({self.fail_count}x)")
+
+            if self.fail_count >= self.MAX_READ_RETRIES:
+                logger.Warn("Camera stalled, reopening...")
+                self._open_camera_locked()
+
             return None, time_ns()
 
-        ret, frame = self.cap.read()
-
-        if ret and frame is not None:
-            self.fail_count = 0
-            return frame, time_ns()
-
-        self.fail_count += 1
-
-        if self.fail_count % 20 == 0:
-            logger.Warn(f"Camera read failed ({self.fail_count}x)")
-
-        if self.fail_count >= self.MAX_READ_RETRIES:
-            logger.Warn("Camera stalled, reopening...")
-            self._open_camera()
-
-        return None, time_ns()
-
     def get_raw_frame(self) -> Optional[MatLike]:
+        with self._lock:
+            if (
+                self._last_frame is not None
+                and (monotonic() - self._last_frame_at) < self.STALE_FRAME_S
+            ):
+                return self._last_frame.copy()
+
         frame, _ = self.get_frame()
         return frame
 
     def release(self):
-        if self.cap:
-            self.cap.release()
-            self.cap = None
+        with self._lock:
+            if self.cap:
+                self.cap.release()
+                self.cap = None
+            self._opened = False
+            self._last_frame = None

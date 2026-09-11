@@ -3,12 +3,16 @@ import numpy as np
 import json
 from typing import List, Tuple, Optional, Dict, Callable
 from threading import Lock
+from util.config import ConfigCategory
 from util.logger import Logger
 import time
 
 logger = Logger("CheckerboardCalibrator")
 
+_cal_prefs = ConfigCategory("Calibration")
 
+fix_principal_point = _cal_prefs.getIntConfig("fix_principal_point", 0)
+zero_tangent_dist = _cal_prefs.getIntConfig("zero_tangent_dist", 0)
 class CheckerboardCalibrator:
     INNER_COLS = 10     
     INNER_ROWS = 7    
@@ -287,10 +291,12 @@ class CheckerboardCalibrator:
             cal_flags = 0
             if hasattr(cv2, "CALIB_USE_INTRINSIC_GUESS"):
                 cal_flags |= cv2.CALIB_USE_INTRINSIC_GUESS
-            if hasattr(cv2, "CALIB_FIX_PRINCIPAL_POINT"):
+            if fix_principal_point.valueInt() and hasattr(cv2, "CALIB_FIX_PRINCIPAL_POINT"):
                 cal_flags |= cv2.CALIB_FIX_PRINCIPAL_POINT
-            if hasattr(cv2, "CALIB_ZERO_TANGENT_DIST"):
+                logger.Warn("Principal point pinned to image centre (Calibration.fix_principal_point=1)")
+            if zero_tangent_dist.valueInt() and hasattr(cv2, "CALIB_ZERO_TANGENT_DIST"):
                 cal_flags |= cv2.CALIB_ZERO_TANGENT_DIST
+                logger.Warn("Tangential distortion forced to zero (Calibration.zero_tangent_dist=1)")
 
             cx_init = width / 2.0
             cy_init = height / 2.0
@@ -339,6 +345,21 @@ class CheckerboardCalibrator:
             logger.Log(f"Camera matrix: fx={fx:.1f}, fy={fy:.1f}, cx={cx:.1f}, cy={cy:.1f}")
             logger.Log(f"FOV: H={fov_x_deg:.1f}°, V={fov_y_deg:.1f}°, D={fov_diag:.1f}°")
             logger.Log(f"Reprojection error: {mean_error:.4f} px")
+
+            dcx = cx - width / 2.0
+            dcy = cy - height / 2.0
+            logger.Log(
+                f"Principal point offset from centre: {dcx:+.1f}, {dcy:+.1f} px "
+                f"({np.degrees(np.arctan(dcx / fx)):+.2f}deg, {np.degrees(np.arctan(dcy / fy)):+.2f}deg)"
+            )
+            if abs(dcx) > 0.10 * width or abs(dcy) > 0.10 * height:
+                logger.Warn(
+                    "Principal point is far from the image centre. Calibrate with the fixed model"
+                )
+            if fov_x_deg > 120 or fov_y_deg > 120:
+                logger.Warn("FOV implausibly wide - check INNER_COLS/INNER_ROWS and SQUARE_SIZE")
+            if fov_x_deg < 30 or fov_y_deg < 30:
+                logger.Warn("FOV implausibly narrow - check INNER_COLS/INNER_ROWS and SQUARE_SIZE")
 
             calibration_dict = {
                 "meta": {

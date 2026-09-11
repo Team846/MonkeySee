@@ -1,0 +1,1 @@
+@reboot bash /home/orangepi/MonkeySee/boot.sh > /home/orangepi/MonkeySee/crash.log 2>&1

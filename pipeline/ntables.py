@@ -1,5 +1,6 @@
 from typing import List
 import ntcore
+from typing import Optional, Tuple
 
 _nt_instance = None
 _initialized = False
@@ -71,8 +72,9 @@ class GamePieceNTables:
         self.tops_pub = self.table.getBooleanArrayTopic("on_tops").publish()
         self.latency_pub = self.table.getDoubleTopic("tl").publish()
         self.heights_pub = self.table.getDoubleArrayTopic("heights").publish()
+        self.optimal_target_pub = self.table.getDoubleArrayTopic("optimal_target").publish()
     
-    def execute(self, detections, latency):
+    def execute(self, detections, latency, optimal_solution: Optional[Tuple[float, float]] = None):
         angles: List[float] = []
         distances: List[float] = []
         tops: List[bool] = []
@@ -89,3 +91,7 @@ class GamePieceNTables:
         self.tops_pub.set(tops)
         self.latency_pub.set(latency)
         self.heights_pub.set(heights)
+        if optimal_solution is not None:
+            self.optimal_target_pub.set([optimal_solution[0], optimal_solution[1]])
+        else:
+            self.optimal_target_pub.set([])

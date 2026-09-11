@@ -53,8 +53,9 @@ def DIVERGING_MOD(image: np.ndarray, divergence_gain: float) -> np.ndarray:
 
     return corrected_image
 
-def PROCESS_FRAME(image: MatLike) -> Tuple[MatLike, float]:
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+def PROCESS_FRAME(image: MatLike) -> MatLike:
+    if image.ndim == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image = BIN_BASED_CORRECT(image, acc_num_bins.valueInt(), target_brightness.valueInt(), min_corr_strength.valueFloat(), corr_divisor.valueFloat())
     image = DIVERGING_MOD(image, divergence_gain.valueFloat())
 
