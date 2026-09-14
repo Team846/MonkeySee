@@ -1,11 +1,6 @@
 #!/bin/bash
-# MonkeySee deploy: local -> OrangePi, preserving device-owned state.
-#
-#   ./deploy.sh            dry run against vision4 (shows what WOULD change)
+#   ./deploy.sh            dry run
 #   ./deploy.sh --go       actually deploy
-#   ./deploy.sh 2 --go     deploy to funkyvision2
-#
-# Anything overwritten on the Pi is saved under MonkeySee_backup_<timestamp>/.
 
 set -euo pipefail
 
@@ -24,10 +19,9 @@ done
 
 STAMP=$(date +%Y%m%d_%H%M%S)
 
-# Device-owned state: written by the Pi at runtime, must survive a deploy.
 EXCLUDES=(
-  --exclude 'cal.json'          # calibration lives on the device
-  --exclude 'config.json'       # dashboard sliders write this at runtime
+  --exclude 'cal.json'
+  --exclude 'config.json'
   --exclude 'venv/'
   --exclude 'captures/'
   --exclude '__pycache__/'
