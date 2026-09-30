@@ -11,6 +11,7 @@ pref_category = ConfigCategory("Detection")
 min_thresh_win = pref_category.getIntConfig("min_thresh_win", 3)
 max_thresh_win = pref_category.getIntConfig("max_thresh_win", 23)
 thresh_step = pref_category.getIntConfig("thresh_step", 17)
+persp_px_per_cell = pref_category.getIntConfig("persp_px_per_cell", 10)
 
 corner_refine = pref_category.getIntConfig("corner_refine", 1)
 corner_refine_win = pref_category.getIntConfig("corner_refine_win", 5)
@@ -36,6 +37,7 @@ parameters = cv2.aruco.DetectorParameters()
 parameters.adaptiveThreshWinSizeMin = min_thresh_win.valueInt()
 parameters.adaptiveThreshWinSizeMax = max_thresh_win.valueInt()
 parameters.adaptiveThreshWinSizeStep = thresh_step.valueInt()
+parameters.perspectiveRemovePixelPerCell = persp_px_per_cell.valueInt()
 
 _detector = cv2.aruco.ArucoDetector(dictionary, parameters) if hasattr(cv2.aruco, "ArucoDetector") else None
 
@@ -94,6 +96,8 @@ def DETECT_TAGS(image: MatLike, refine_image: MatLike = None):
 
     if corner_refine.valueInt() > 0:
         corners = _refine_corners(corners, refine_image if refine_image is not None else image)
+
+    corners = [np.roll(q, 2, axis=1) for q in corners]
 
     return corners, IDs.flatten()
 

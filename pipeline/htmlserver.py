@@ -6,14 +6,28 @@ from pipeline.visionmanager import VisionManager
 import time
 from threading import Thread
 from util.config import ConfigCategory
+from util.system_stats import get_system_stats
 import os
 
 
 DASHBOARD_BASE_PORT = 5800
 
+# match to v4l2-ctl --list-ctrls
+EXPOSURE_SLIDER_MAX = 100  # v4l2 units of 0.1ms
+GAIN_SLIDER_MAX = 255
+
+STREAM_MAX_FPS = 15
+
 
 def dashboard_port(camera_id: int) -> int:
     return DASHBOARD_BASE_PORT + camera_id
+
+
+MJPEG_PART_HEADER = b'--frame\r\nContent-Type: image/jpeg\r\n\r\n'
+
+
+def mjpeg_part(jpeg: bytes) -> bytes:
+    return jpeg + b'\r\n' + MJPEG_PART_HEADER
 
 
 class DashboardServer:
@@ -77,10 +91,12 @@ class DashboardServer:
                                 'max-height': '310px',
                                 'overflow-y': 'auto',
                                 'overflow-x': 'hidden',
+                                'flex-shrink': '0',
                             }
                         ),
                         html.Br(),
                         settings_panel,
+                        self.create_exposure_controls(cam_id),
                     ], style={
                         "flex": "1",
                         "padding": "10px",
@@ -121,6 +137,12 @@ class DashboardServer:
                                 "max-width": "600px",
                                 "height": "40px",
                                 "margin-top": "5px",
+                            }),
+                            html.Div(id=f'system-{cam_id}', style={
+                                "position": "relative",
+                                "width": "100%",
+                                "max-width": "600px",
+                                "height": "32px",
                             }),
                             html.Br(),
                             html.Div([
@@ -367,6 +389,76 @@ class DashboardServer:
                     'border-radius': '10px',
                 },
             ),
+        ])
+
+    def create_exposure_controls(self, cam_id):
+        pipeline = self.vision_manager.get_pipeline(cam_id)
+        if not pipeline:
+            return html.Div()
+        settings = pipeline.cam.get_exposure_settings()
+        auto = settings["auto_exposure"]
+
+        return html.Div([
+            html.H4("Camera Exposure", style={
+                'textAlign': 'left',
+                'color': '#CCC9CA',
+                'font-size': '18px',
+                'font-weight': 'medium',
+                'padding': '15px 0px 0px 7px',
+            }),
+
+            dcc.Checklist(
+                id={'type': 'auto-exposure', 'index': cam_id},
+                options=[{'label': ' Auto Exposure', 'value': 'auto'}],
+                value=['auto'] if auto else [],
+                style={
+                    "color": "#CCC9CA",
+                    "font-size": "16px",
+                    'padding': '10px 20px 15px 15px',
+                },
+            ),
+
+            html.Label("Exposure (x100 µs)", style={
+                "color": "#CCC9CA",
+                "font-size": "16px",
+                'padding': '0 20px 0 15px',
+            }),
+            dcc.Slider(
+                id={'type': 'exposure', 'index': cam_id},
+                min=1,
+                max=EXPOSURE_SLIDER_MAX,
+                step=1,
+                value=min(settings["exposure"], EXPOSURE_SLIDER_MAX),
+                disabled=auto,
+                marks={1: '1', EXPOSURE_SLIDER_MAX: str(EXPOSURE_SLIDER_MAX)},
+                tooltip={"placement": "bottom", "always_visible": True},
+                className="funky-slider"
+            ),
+            html.Br(),
+
+            html.Label("Gain", style={
+                "color": "#CCC9CA",
+                "font-size": "16px",
+                'padding': '0 20px 0 15px',
+            }),
+            dcc.Slider(
+                id={'type': 'gain', 'index': cam_id},
+                min=0,
+                max=GAIN_SLIDER_MAX,
+                step=1,
+                value=min(settings["gain"], GAIN_SLIDER_MAX),
+                disabled=auto,
+                marks={0: '0', GAIN_SLIDER_MAX: str(GAIN_SLIDER_MAX)},
+                tooltip={"placement": "bottom", "always_visible": True},
+                className="funky-slider"
+            ),
+            html.Br(),
+
+            html.Div(settings["status"], id={'type': 'exposure-status', 'index': cam_id}, style={
+                'color': '#CCC9CA',
+                'font-size': '13px',
+                'padding': '15px 20px 0 15px',
+            }),
         ])
 
     def create_apriltag_sliders(self, cam_id):
@@ -679,6 +771,13 @@ class DashboardServer:
                         'padding': '20px',
                         'margin-top': '20px'
                     }),
+                    html.P("use a longer exposure with low gain so sensor noise doesn't inflate the score. Switch back to match settings after", style={
+                        'color': '#CCC9CA',
+                        'font-size': '14px',
+                        'padding': '0 20px',
+                        'margin': '0 7px',
+                    }),
+                    self.create_exposure_controls(cam_id),
                 ], style={
                     "flex": "1",
                     "padding": "10px",
@@ -832,7 +931,32 @@ class DashboardServer:
                     })
                 ]
             return [html.Span("Disabled", style={'color': '#888'})]
-        
+
+        @self.app.callback(
+            Output(f'system-{cam_id}', 'children'),
+            [Input('update-interval', 'n_intervals')]
+        )
+        def update_system_stats(n_intervals):
+            stats = get_system_stats()
+            if stats is None:
+                return [html.Span("CPU stats need Linux", style={'color': '#888', 'padding': '5px 10px'})]
+            stat_style = {
+                "position": "absolute",
+                "bottom": "0",
+                "color": "rgba(255, 255, 255, 0.8)",
+                "font-size": "16px",
+                "font-style": "italic",
+                "padding": "5px 10px",
+            }
+            per_core = " · ".join(f"cpu{i} {p:.0f}%" for i, p in enumerate(stats["cores"]))
+            temp = stats["temp_c"]
+            return [
+                html.Span(f"CPU: {stats['cpu']:.0f}% (busiest core {max(stats['cores'], default=0):.0f}%)",
+                          title=per_core, style={**stat_style, "left": "0"}),
+                html.Span(f"CPU Temp: {temp:.1f} °C" if temp is not None else "CPU Temp: n/a",
+                          style={**stat_style, "right": "0"}),
+            ]
+
         @self.app.callback(
             Output(f'detections-{cam_id}', 'children'),
             [Input('update-interval', 'n_intervals')]
@@ -986,6 +1110,23 @@ class DashboardServer:
                 DashboardServer.framecomp_slider.setFloat(value)
             return value
         
+        @self.app.callback(
+            [Output({'type': 'exposure', 'index': MATCH}, 'disabled'),
+             Output({'type': 'gain', 'index': MATCH}, 'disabled'),
+             Output({'type': 'exposure-status', 'index': MATCH}, 'children')],
+            [Input({'type': 'auto-exposure', 'index': MATCH}, 'value'),
+             Input({'type': 'exposure', 'index': MATCH}, 'value'),
+             Input({'type': 'gain', 'index': MATCH}, 'value')],
+            prevent_initial_call=True
+        )
+        def update_exposure(auto_value, exposure, gain):
+            auto = 'auto' in (auto_value or [])
+            pipeline = self.vision_manager.get_pipeline(self.camera_id)
+            if not pipeline or exposure is None or gain is None:
+                return auto, auto, no_update
+            pipeline.cam.set_exposure_settings(auto, int(exposure), int(gain))
+            return auto, auto, pipeline.cam.get_exposure_settings()["status"]
+
         @self.app.callback(
             Output({'type': 'yolo_conf', 'index': MATCH}, 'value'),
             [Input({'type': 'yolo_conf', 'index': MATCH}, 'value')],
@@ -1295,9 +1436,10 @@ class DashboardServer:
 
     def generate_frames(self, camera_id: int):
         blank_frame_cache = None
-        last_frame = None
-        frame_skip_counter = 0
-        
+        last_source = None
+        next_send = 0.0
+
+        yield MJPEG_PART_HEADER
         while True:
             pipeline = self.vision_manager.get_pipeline(camera_id)
             
@@ -1312,42 +1454,25 @@ class DashboardServer:
                     ]
                     ret, buffer = cv2.imencode('.jpg', blank, encode_params)
                     blank_frame_cache = buffer.tobytes()
-                
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + blank_frame_cache + b'\r\n')
+
+                yield mjpeg_part(blank_frame_cache)
                 time.sleep(0.1)
                 continue
-            
+
+            time.sleep(max(0.0, next_send - time.monotonic()))
             frame = pipeline.get_frame()
-            if frame is None:
-                if last_frame is not None:
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
-                time.sleep(0.05)
+            if frame is None or frame is last_source:
+                time.sleep(0.01)
                 continue
-            
-            frame_skip_counter += 1
-            if frame_skip_counter % 2 != 0:
-                if last_frame is not None:
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
-                continue
-            
+            last_source = frame
+            next_send = time.monotonic() + 1.0 / STREAM_MAX_FPS
+
             quality = int(DashboardServer.framecomp_slider.valueFloat() * 100)
             if pipeline.get_pipeline_type() == "raw":
                 quality = max(quality, 95)
-            encode_params = [
-                cv2.IMWRITE_JPEG_QUALITY, quality,
-                cv2.IMWRITE_JPEG_OPTIMIZE, 1,
-                cv2.IMWRITE_JPEG_PROGRESSIVE, 0
-            ]
-            
-            ret, buffer = cv2.imencode('.jpg', frame, encode_params)
-            frame_bytes = buffer.tobytes()
-            last_frame = frame_bytes
-            
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+            ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            yield mjpeg_part(buffer.tobytes())
 
     def calibration_feed(self, camera_id: int):
         return Response(self.generate_calibration_frames(camera_id),
@@ -1430,7 +1555,7 @@ class DashboardServer:
         print(f"Port: {port}")
         print(f"Access at: http://0.0.0.0:{port}")
         print(f"{'='*50}\n")
-        self.app.run_server(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+        self.app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
     def start_server_thread(self):
         Thread(target=self.start_server, daemon=True).start()
@@ -1600,7 +1725,9 @@ class CameraIndexServer:
 
     def _generate_frames(self, camera_id: int):
         blank_frame_cache = None
-        last_frame = None
+        last_source = None
+        next_send = 0.0
+        yield MJPEG_PART_HEADER
         while True:
             pipeline = self.vision_manager.get_pipeline(camera_id)
             if not pipeline or not pipeline.is_enabled():
@@ -1617,25 +1744,20 @@ class CameraIndexServer:
                     )
                     ret, buffer = cv2.imencode(".jpg", blank, [cv2.IMWRITE_JPEG_QUALITY, 60])
                     blank_frame_cache = buffer.tobytes()
-                yield (
-                    b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + blank_frame_cache + b"\r\n"
-                )
+                yield mjpeg_part(blank_frame_cache)
                 time.sleep(0.1)
                 continue
 
+            time.sleep(max(0.0, next_send - time.monotonic()))
             frame = pipeline.get_frame()
-            if frame is None:
-                if last_frame is not None:
-                    yield (
-                        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + last_frame + b"\r\n"
-                    )
-                time.sleep(0.05)
+            if frame is None or frame is last_source:
+                time.sleep(0.01)
                 continue
+            last_source = frame
+            next_send = time.monotonic() + 1.0 / STREAM_MAX_FPS
 
             ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            frame_bytes = buffer.tobytes()
-            last_frame = frame_bytes
-            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+            yield mjpeg_part(buffer.tobytes())
 
     def _index_html(self):
         cards = []

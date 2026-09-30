@@ -4,7 +4,7 @@ import time
 import localization.detection
 import localization.apriltag_solution
 import pipeline.ntables
-from time import time_ns
+from time import monotonic_ns
 from typing import List, Dict, Optional
 import platform
 import json
@@ -20,7 +20,7 @@ CAPTURES_DIR = "captures"
 
 
 class _NullNTables:
-    def execute(self, detections, latency):
+    def execute(self, detections, latency, capture_ns):
         pass
 
     def updateFrameNum(self, frame_num: int):
@@ -37,10 +37,11 @@ class CameraPipeline:
 
         use_high_res = self.pipeline_type in ("apriltag", "raw")
 
+        settings_category = f"Camera{self.camera_id}"
         if platform.system() == "Windows" or platform.system() == "Darwin":
-            self.cam = CameraReader(self.device_id if self.camera_id == 0 else self.camera_id - 1, use_high_res)
+            self.cam = CameraReader(self.device_id if self.camera_id == 0 else self.camera_id - 1, use_high_res, settings_category)
         else:
-            self.cam = CameraReader(self.device_id, use_high_res)
+            self.cam = CameraReader(self.device_id, use_high_res, settings_category)
 
         self.frame_count = 0
         self.start_time = time.time()
@@ -87,7 +88,8 @@ class CameraPipeline:
         try:
             if not self.running:
                 return
-            frame, timestamp = self.cam.get_frame()
+            frame, capture_ns = self.cam.get_frame()
+            read_ns = monotonic_ns()
 
             if frame is None:
                 time.sleep(0.1)
@@ -123,7 +125,9 @@ class CameraPipeline:
                 annotated_frame, rawDets = self._visiony.runPipeline(frame)
                 detections = self._gamepiece_solution.CALCULATE_PARTIAL_SOLUTION(self.camera_id, frame, rawDets)
 
-            processing_latency = (time_ns() - timestamp) / 1e9
+            done_ns = monotonic_ns()
+            processing_latency = (done_ns - read_ns) / 1e9
+            capture_latency = (done_ns - capture_ns) / 1e9
 
             with self.lock:
                 if self.pipeline_type == "raw":
@@ -147,14 +151,14 @@ class CameraPipeline:
                 current_time = time.time()
                 elapsed = current_time - self.fps_log_time
                 self.backend_fps = self.fps_log_count / elapsed
-                logger.Log(f"Camera {self.camera_id} ({self.pipeline_type}): {self.backend_fps:.2f} FPS | Latency: {processing_latency*1000:.2f}ms | Detections: {len(detections)}")
+                logger.Log(f"Camera {self.camera_id} ({self.pipeline_type}): {self.backend_fps:.2f} FPS | Latency: {processing_latency*1000:.2f}ms (since capture {capture_latency*1000:.2f}ms) | Detections: {len(detections)}")
                 self.fps_log_time = current_time
                 self.fps_log_count = 0
 
             if self.pipeline_type == "apriltag":
                 self.ntables.updateFrameNum(self.frame_num)
 
-            self.ntables.execute(detections, processing_latency)
+            self.ntables.execute(detections, processing_latency, capture_ns)
 
         except Exception as e:
             logger.Warn(f"Error in camera {self.camera_id}: {e}")
@@ -169,7 +173,7 @@ class CameraPipeline:
             f"cam{self.camera_id}_{self._capture_stamp()}.avi",
         )
         fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-        writer = cv2.VideoWriter(path, fourcc, 30.0, (width, height))
+        writer = cv2.VideoWriter(path, fourcc, 30.0, (width, height), isColor=frame.ndim == 3)
         if not writer.isOpened():
             self._last_capture_message = f"Failed to open video writer: {path}"
             logger.Warn(self._last_capture_message)
