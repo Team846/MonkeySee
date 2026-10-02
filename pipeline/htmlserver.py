@@ -7,6 +7,9 @@ import time
 from threading import Thread
 from util.config import ConfigCategory
 from util.system_stats import get_system_stats
+from camera.camerareader import RESOLUTIONS
+from localization.undistort import has_opencv_calibration
+from calibration.checkerboard_calibrator import save_samples
 import os
 
 
@@ -398,14 +401,63 @@ class DashboardServer:
         settings = pipeline.cam.get_exposure_settings()
         auto = settings["auto_exposure"]
 
+        resolution_controls = []
+        if pipeline.cam.use_preprocessing:
+            width, height = pipeline.cam.get_resolution()
+            resolution_controls = [
+                html.Label("Resolution", style={
+                    "color": "#CCC9CA",
+                    "font-size": "16px",
+                    'padding': '10px 20px 0 15px',
+                }),
+                dcc.RadioItems(
+                    id={'type': 'resolution', 'index': cam_id},
+                    options=[{'label': f' {w}x{h}', 'value': f'{w}x{h}'} for w, h in RESOLUTIONS],
+                    value=f'{width}x{height}',
+                    inline=True,
+                    labelStyle={'margin-right': '20px'},
+                    style={
+                        "color": "#CCC9CA",
+                        "font-size": "16px",
+                        'padding': '10px 20px 0 15px',
+                    },
+                ),
+                html.Div(self._resolution_status(cam_id, width, height), id={'type': 'resolution-status', 'index': cam_id}, style={
+                    'color': '#CCC9CA',
+                    'font-size': '13px',
+                    'padding': '5px 20px 0 15px',
+                }),
+                html.Div([
+                    html.Label("Decimation (faster detection, shorter range)", style={
+                        "color": "#CCC9CA",
+                        "font-size": "16px",
+                        'padding': '10px 20px 0 15px',
+                    }),
+                    dcc.RadioItems(
+                        id={'type': 'decimation', 'index': cam_id},
+                        options=[{'label': ' Off', 'value': 1.0}, {'label': ' 1.5x', 'value': 1.5}, {'label': ' 2x', 'value': 2.0}],
+                        value=pipeline.decimate.valueFloat(),
+                        inline=True,
+                        labelStyle={'margin-right': '20px'},
+                        style={
+                            "color": "#CCC9CA",
+                            "font-size": "16px",
+                            'padding': '10px 20px 0 15px',
+                        },
+                    ),
+                ], id={'type': 'decimation-row', 'index': cam_id}, style=self._decimation_row_style(width, height)),
+            ]
+
         return html.Div([
-            html.H4("Camera Exposure", style={
+            html.H4("Camera", style={
                 'textAlign': 'left',
                 'color': '#CCC9CA',
                 'font-size': '18px',
                 'font-weight': 'medium',
                 'padding': '15px 0px 0px 7px',
             }),
+
+            *resolution_controls,
 
             dcc.Checklist(
                 id={'type': 'auto-exposure', 'index': cam_id},
@@ -460,6 +512,14 @@ class DashboardServer:
                 'padding': '15px 20px 0 15px',
             }),
         ])
+
+    def _decimation_row_style(self, width, height):
+        return {'display': 'block' if (width, height) == (1280, 800) else 'none'}
+
+    def _resolution_status(self, cam_id, width, height):
+        if has_opencv_calibration(cam_id, width, height):
+            return f"Using {width}x{height} calibration"
+        return f"No calibration at {width}x{height}: tags won't report distance until you calibrate on the Calibration tab"
 
     def create_apriltag_sliders(self, cam_id):
         from camera.preprocess import GET_DIVERGENCE_GAIN, GET_TARGET_BRIGHTNESS, GET_NUM_BINS, GET_MIN_CORR_STRENGTH
@@ -619,6 +679,17 @@ class DashboardServer:
                         'border-radius': '10px',
                         'margin': '15px 7px',
                     }),
+
+                    dcc.Checklist(
+                        id={'type': 'save-cal-samples', 'index': cam_id},
+                        options=[{'label': ' Save sample images (to calibrate on another computer)', 'value': 'save'}],
+                        value=['save'] if save_samples.valueInt() else [],
+                        style={
+                            "color": "#CCC9CA",
+                            "font-size": "16px",
+                            'padding': '0 20px 0 15px',
+                        },
+                    ),
                     
                     html.Div(id=f'calibration-status-{cam_id}', style={
                         'padding': '15px 20px',
@@ -1128,6 +1199,34 @@ class DashboardServer:
             return auto, auto, pipeline.cam.get_exposure_settings()["status"]
 
         @self.app.callback(
+            [Output({'type': 'resolution-status', 'index': MATCH}, 'children'),
+             Output({'type': 'decimation-row', 'index': MATCH}, 'style')],
+            [Input({'type': 'resolution', 'index': MATCH}, 'value')],
+            prevent_initial_call=True
+        )
+        def update_resolution(value):
+            pipeline = self.vision_manager.get_pipeline(self.camera_id)
+            if not pipeline or not value:
+                return no_update, no_update
+            width, height = map(int, value.split("x"))
+            if (width, height) != pipeline.cam.get_resolution():
+                pipeline.cam.set_resolution(width, height)
+                if self._calibrator is not None:
+                    self._calibrator.reset()
+            return self._resolution_status(self.camera_id, width, height), self._decimation_row_style(width, height)
+
+        @self.app.callback(
+            Output({'type': 'decimation', 'index': MATCH}, 'value'),
+            [Input({'type': 'decimation', 'index': MATCH}, 'value')],
+            prevent_initial_call=True
+        )
+        def update_decimation(value):
+            pipeline = self.vision_manager.get_pipeline(self.camera_id)
+            if pipeline and value is not None:
+                pipeline.decimate.setFloat(max(1.0, float(value)))
+            return value
+
+        @self.app.callback(
             Output({'type': 'yolo_conf', 'index': MATCH}, 'value'),
             [Input({'type': 'yolo_conf', 'index': MATCH}, 'value')],
             prevent_initial_call=True
@@ -1306,6 +1405,7 @@ class DashboardServer:
             return html.Div([
                 html.Div(f"Status: {status['status_message']}", style={'margin': '5px 0'}),
                 html.Div(f"Samples: {status['num_samples']}/{status['target_samples']}", style={'margin': '5px 0'}),
+                html.Div(f"Images: {status['sample_dir']}", style={'margin': '5px 0'}) if status['sample_dir'] else html.Div(),
                 html.Div(f"Progress: {progress_pct:.1f}%", style={'margin': '5px 0'}),
                 progress_bar if progress_bar else html.Div(),
                 html.Div(
@@ -1420,6 +1520,15 @@ class DashboardServer:
                 self.calibrator.reset()
             return n_clicks
         
+        @self.app.callback(
+            Output({'type': 'save-cal-samples', 'index': MATCH}, 'value'),
+            [Input({'type': 'save-cal-samples', 'index': MATCH}, 'value')],
+            prevent_initial_call=True
+        )
+        def update_save_samples(value):
+            save_samples.setInt(1 if 'save' in (value or []) else 0)
+            return value
+
         @self.app.callback(
             Output({'type': 'save-calibration', 'index': MATCH}, 'n_clicks'),
             [Input({'type': 'save-calibration', 'index': MATCH}, 'n_clicks')],

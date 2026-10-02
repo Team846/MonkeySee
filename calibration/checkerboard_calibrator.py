@@ -1,10 +1,11 @@
 import cv2
 import numpy as np
-import json
 from typing import List, Tuple, Optional, Dict, Callable
 from threading import Lock
 from util.config import ConfigCategory
 from util.logger import Logger
+from localization.undistort import store_calibration
+import os
 import time
 
 logger = Logger("CheckerboardCalibrator")
@@ -13,6 +14,10 @@ _cal_prefs = ConfigCategory("Calibration")
 
 fix_principal_point = _cal_prefs.getIntConfig("fix_principal_point", 0)
 zero_tangent_dist = _cal_prefs.getIntConfig("zero_tangent_dist", 0)
+save_samples = _cal_prefs.getIntConfig("save_samples", 0)
+
+SAMPLES_DIR = os.path.join("captures", "calibration")
+
 class CheckerboardCalibrator:
     INNER_COLS = 10     
     INNER_ROWS = 7    
@@ -30,6 +35,7 @@ class CheckerboardCalibrator:
         self._object_points = self._make_object_points()
 
         self.all_corners: List[np.ndarray] = []
+        self.sample_dir: Optional[str] = None
         self.image_size: Optional[Tuple[int, int]] = None
         self.is_calibrating = False
         self.calibration_result: Optional[Dict] = None
@@ -148,13 +154,7 @@ class CheckerboardCalibrator:
             return False, "Move board around"
         return True, "OK"
 
-    def process_frame(
-        self, frame: np.ndarray, downsample: bool = True, auto_capture: bool = True
-    ) -> Tuple[Optional[np.ndarray], bool, str]:
-        if frame is None:
-            logger.Warn("process_frame called with None frame")
-            return None, False, "No frame"
-
+    def find_corners(self, frame: np.ndarray, downsample: bool = True) -> Tuple[bool, Optional[np.ndarray], np.ndarray]:
         if downsample and frame.shape[0] > 480:
             scale = 480.0 / frame.shape[0]
             frame_detect = cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
@@ -172,6 +172,18 @@ class CheckerboardCalibrator:
                 gray_full, corners, (5, 5), (-1, -1),
                 (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001),
             )
+        return ret, corners, gray_full
+
+    def process_frame(
+        self, frame: np.ndarray, downsample: bool = True, auto_capture: bool = True
+    ) -> Tuple[Optional[np.ndarray], bool, str]:
+        if frame is None:
+            logger.Warn("process_frame called with None frame")
+            return None, False, "No frame"
+        if self.is_calibrating:
+            return frame, False, self.status_message
+
+        ret, corners, gray_full = self.find_corners(frame, downsample)
 
         n_corners = len(corners) if corners is not None else 0
         frame_count = len(self.all_corners)
@@ -229,6 +241,8 @@ class CheckerboardCalibrator:
 
         with self.lock:
             self.last_frame_annotated = annotated
+            if self.is_calibrating or self.calibration_result is not None:
+                return annotated, is_good_sample, status
             self.status_message = status
             self.progress = len(self.all_corners) / self.TARGET_SAMPLES
             if (
@@ -261,6 +275,8 @@ class CheckerboardCalibrator:
             good = ok
 
         if good:
+            if save_samples.valueInt():
+                self._save_sample(gray, len(self.all_corners) + 1)
             with self.lock:
                 self.all_corners.append(corners)
                 if self.image_size is None:
@@ -273,6 +289,15 @@ class CheckerboardCalibrator:
             return True
         return False
 
+    def _save_sample(self, gray: np.ndarray, index: int) -> None:
+        if self.sample_dir is None:
+            h, w = gray.shape[:2]
+            self.sample_dir = os.path.join(SAMPLES_DIR, f"cam{self.camera_id}_{w}x{h}_{time.strftime('%Y%m%d_%H%M%S')}")
+            os.makedirs(self.sample_dir, exist_ok=True)
+        path = os.path.join(self.sample_dir, f"{index:03d}.png")
+        if not cv2.imwrite(path, gray):
+            logger.Warn(f"Failed to save calibration sample {path}")
+
     def calibrate(self) -> Optional[Dict]:
         with self.lock:
             if len(self.all_corners) < self.MIN_SAMPLES:
@@ -282,7 +307,8 @@ class CheckerboardCalibrator:
             self.is_calibrating = True
             self.status_message = "Preparing data... (0%)"
             self.progress = 0.0
-            logger.Log(f"Starting calibration with {len(self.all_corners)} samples...")
+            samples = list(self.all_corners)
+            logger.Log(f"Starting calibration with {len(samples)} samples...")
 
         try:
             start_time = time.time()
@@ -311,10 +337,10 @@ class CheckerboardCalibrator:
                 self.progress = 0.10
                 self.status_message = "Running calibration... (10%)"
 
-            obj_points = [self._object_points] * len(self.all_corners)
+            obj_points = [self._object_points] * len(samples)
             ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
                 obj_points,
-                self.all_corners,
+                samples,
                 (width, height),
                 camera_matrix_init,
                 dist_coeffs_init,
@@ -367,7 +393,7 @@ class CheckerboardCalibrator:
                     "camera_matrix": camera_matrix.tolist(),
                     "dist_coeffs": dist_coeffs.tolist(),
                     "reprojection_error": float(mean_error),
-                    "num_samples": len(self.all_corners),
+                    "num_samples": len(samples),
                     "calibration_time": elapsed,
                     "fov": {
                         "horizontal": float(fov_x_deg),
@@ -385,7 +411,7 @@ class CheckerboardCalibrator:
                 self.calibration_result = calibration_dict
                 self.is_calibrating = False
                 self.progress = 1.0
-                self.status_message = f"✓ Calibration complete! Error: {mean_error:.4f}"
+                self.status_message = f"✓ Calibration complete! Error: {mean_error:.4f} px. Scroll down and press Save Calibration"
             return calibration_dict
 
         except Exception as e:
@@ -396,20 +422,16 @@ class CheckerboardCalibrator:
                 self.status_message = f"Error: {str(e)}"
             return None
 
-    def save_calibration(self, output_path: str = "cal.json") -> bool:
+    def save_calibration(self) -> bool:
         if self.calibration_result is None:
             logger.Error("No calibration result to save")
             return False
         try:
-            try:
-                with open(output_path, "r") as f:
-                    all_calibrations = json.load(f)
-            except FileNotFoundError:
-                all_calibrations = {}
-            all_calibrations[str(self.camera_id)] = self.calibration_result
-            with open(output_path, "w") as f:
-                json.dump(all_calibrations, f, indent=2)
-            logger.Log(f"Calibration saved for camera {self.camera_id} to {output_path}")
+            store_calibration(self.camera_id, self.calibration_result)
+            res = self.calibration_result["meta"]["resolution"]
+            with self.lock:
+                self.status_message = f"✓ Saved {res['width']}x{res['height']} calibration"
+            logger.Log(f"Calibration saved for camera {self.camera_id}")
             return True
         except Exception as e:
             logger.Error(f"Failed to save calibration: {e}")
@@ -419,6 +441,7 @@ class CheckerboardCalibrator:
         with self.lock:
             num = len(self.all_corners)
             self.all_corners.clear()
+            self.sample_dir = None
             self.image_size = None
             self.calibration_result = None
             self.status_message = "Ready to calibrate"
@@ -439,6 +462,7 @@ class CheckerboardCalibrator:
                 "is_calibrating": self.is_calibrating,
                 "is_ready": len(self.all_corners) >= self.MIN_SAMPLES,
                 "calibration_complete": self.calibration_result is not None,
+                "sample_dir": self.sample_dir,
             }
 
     def get_last_frame(self) -> Optional[np.ndarray]:

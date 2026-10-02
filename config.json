@@ -122,7 +122,7 @@
     },
     "HTMLServer": {
         "framecomp_slider": {
-            "value": "1",
+            "value": "0.05",
             "type": 2
         }
     },
@@ -207,6 +207,28 @@
         },
         "gain": {
             "value": "50",
+            "type": 1
+        },
+        "width": {
+            "value": "800",
+            "type": 1
+        },
+        "height": {
+            "value": "600",
+            "type": 1
+        }
+    },
+    "Calibration": {
+        "fix_principal_point": {
+            "value": "0",
+            "type": 1
+        },
+        "zero_tangent_dist": {
+            "value": "0",
+            "type": 1
+        },
+        "save_samples": {
+            "value": "0",
             "type": 1
         }
     }

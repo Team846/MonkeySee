@@ -32,7 +32,11 @@ EXCLUDES=(
   --exclude 'config_dev.json'
   --exclude 'deploy.sh'
   --exclude 'deploy.bat'
+  --exclude 'pull_configs.sh'
+  --exclude 'pi_configs/'
   --exclude 'actuallyonopi/'
+  --exclude 'boot.sh'
+  --exclude 'pi-cal.json'
 )
 
 RSYNC=(rsync -avz --backup "--backup-dir=${TARGET_DIR}_backup_${STAMP}"

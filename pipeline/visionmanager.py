@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 from threading import Thread, Lock
 from camera.preprocess import PROCESS_FRAME
+from util.config import ConfigCategory
 from util.logger import Logger
 
 logger = Logger("VisionManager")
@@ -38,6 +39,7 @@ class CameraPipeline:
         use_high_res = self.pipeline_type in ("apriltag", "raw")
 
         settings_category = f"Camera{self.camera_id}"
+        self.decimate = ConfigCategory(settings_category).getFloatConfig("decimate", 1.0)
         if platform.system() == "Windows" or platform.system() == "Darwin":
             self.cam = CameraReader(self.device_id if self.camera_id == 0 else self.camera_id - 1, use_high_res, settings_category)
         else:
@@ -51,6 +53,9 @@ class CameraPipeline:
         self.backend_fps = 0.0
         self.processing_latency = 0.0
         self.frame: cv2.typing.MatLike = None
+        self._tags = None
+        self._overlay_src = None
+        self._overlay = None
         self.detections: List = []
         self.frame_num = 0
         self.lock = Lock()
@@ -107,22 +112,33 @@ class CameraPipeline:
                 with self.lock:
                     self.focus_score = focus_score
                     self.frame = frame
+                    self._tags = None
                 time.sleep(0.03)
                 return
 
+            tags = None
             if self.pipeline_type == "apriltag":
                 raw_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
-                frame = PROCESS_FRAME(raw_gray)
+                decimate = self.get_decimation()
+                if decimate > 1:
+                    frame = cv2.resize(raw_gray, None, fx=1 / decimate, fy=1 / decimate, interpolation=cv2.INTER_AREA)
+                else:
+                    frame = raw_gray
+                frame = PROCESS_FRAME(frame)
                 corners, ids = localization.detection.DETECT_TAGS(frame, refine_image=raw_gray)
-                annotated_frame = localization.detection.ANNOTATE_TAGS(frame, corners, ids)
+                display_frame = frame
+                if frame.shape != raw_gray.shape:
+                    tags = (localization.detection.scale_corners(corners, raw_gray.shape, frame.shape), ids)
+                else:
+                    tags = (corners, ids)
                 detections = localization.apriltag_solution.CALCULATE_PARTIAL_SOLUTION(
-                    self.camera_id, frame, corners, ids
+                    self.camera_id, raw_gray, corners, ids
                 )
             elif self.pipeline_type == "raw":
-                annotated_frame = frame
+                display_frame = frame
                 detections = []
             else:
-                annotated_frame, rawDets = self._visiony.runPipeline(frame)
+                display_frame, rawDets = self._visiony.runPipeline(frame)
                 detections = self._gamepiece_solution.CALCULATE_PARTIAL_SOLUTION(self.camera_id, frame, rawDets)
 
             done_ns = monotonic_ns()
@@ -132,10 +148,11 @@ class CameraPipeline:
             with self.lock:
                 if self.pipeline_type == "raw":
                     if self._recording_pending and self._writer is None:
-                        self._start_writer_locked(annotated_frame)
+                        self._start_writer_locked(display_frame)
                     if self._writer is not None:
-                        self._writer.write(annotated_frame)
-                self.frame = annotated_frame
+                        self._writer.write(display_frame)
+                self.frame = display_frame
+                self._tags = tags
                 self.detections = detections
                 self.processing_latency = processing_latency
 
@@ -186,11 +203,10 @@ class CameraPipeline:
         logger.Log(self._last_capture_message)
 
     def save_snapshot(self) -> Optional[str]:
-        with self.lock:
-            if self.frame is None:
-                self._last_capture_message = "No frame available"
-                return None
-            frame = self.frame.copy()
+        frame = self.get_frame()
+        if frame is None:
+            self._last_capture_message = "No frame available"
+            return None
         os.makedirs(CAPTURES_DIR, exist_ok=True)
         path = os.path.join(
             CAPTURES_DIR,
@@ -242,9 +258,17 @@ class CameraPipeline:
 
     def get_frame(self):
         with self.lock:
-            if self.frame is not None:
+            if self.frame is None or self._tags is None:
                 return self.frame
-            return None
+            if self._overlay_src is not self.frame:
+                self._overlay = localization.detection.ANNOTATE_TAGS(self.frame, *self._tags)
+                self._overlay_src = self.frame
+            return self._overlay
+
+    def get_decimation(self) -> float:
+        if self.cam.get_resolution() != (1280, 800):
+            return 1.0
+        return max(1.0, self.decimate.valueFloat())
 
     def get_detections(self):
         with self.lock:

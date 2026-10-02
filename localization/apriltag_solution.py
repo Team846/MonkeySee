@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from localization.undistort import GET_CAMERA_ANGLES, load_calibration
+from localization.undistort import GET_CAMERA_ANGLES, load_calibration, calibration_for
 from util.config import ConfigCategory, Config
 from util.logger import Logger
 from cv2.typing import MatLike
@@ -62,6 +62,10 @@ def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, all_corners, all_
     params = CAM_PARAMS.get(camera_id)
     if params is None:
         logger.Warn(f"No AprilTag params for camera {camera_id}; call SET_CAM first")
+        return result
+
+    height, width = image.shape[:2]
+    if calibration_for(camera_id, width, height) is None:
         return result
 
     cam_angle_h = params["CAM_MOUNT_H_deg"].valueFloat()

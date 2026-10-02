@@ -16,6 +16,8 @@ logger = Logger("Camera")
 V4L2_EXPOSURE_MANUAL = 1
 V4L2_EXPOSURE_APERTURE_PRIORITY = 3
 
+RESOLUTIONS = ((800, 600), (1280, 800))
+
 class CameraReader:
     MAX_READ_RETRIES = 200
     REOPEN_SLEEP_S = 0.5
@@ -31,6 +33,8 @@ class CameraReader:
         self._auto_exposure = settings.getIntConfig("auto_exposure", 1)
         self._exposure = settings.getIntConfig("exposure", 20)
         self._gain = settings.getIntConfig("gain", 50)
+        self._width = settings.getIntConfig("width", 800)
+        self._height = settings.getIntConfig("height", 600)
         self._exposure_status = "Camera not opened yet"
 
         if platform.system() in ["Windows", "Darwin"]:
@@ -76,8 +80,9 @@ class CameraReader:
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         if self.use_preprocessing:
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 800)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 600)
+            width, height = self.get_resolution()
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
             self.cap.set(cv2.CAP_PROP_FPS, 120)
             if platform.system() == "Linux":
                 self.cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
@@ -173,6 +178,16 @@ class CameraReader:
             "gain": self._gain.valueInt(),
             "status": self._exposure_status,
         }
+
+    def get_resolution(self) -> Tuple[int, int]:
+        return self._width.valueInt(), self._height.valueInt()
+
+    def set_resolution(self, width: int, height: int) -> None:
+        self._width.setInt(width)
+        self._height.setInt(height)
+        with self._lock:
+            if self._opened:
+                self._open_camera_locked()
 
     def _capture_time_ns_locked(self) -> int:
         now = monotonic_ns()
