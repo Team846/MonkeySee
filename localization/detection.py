@@ -84,10 +84,6 @@ def _refine_corners(corners, refine_image: MatLike):
 
     return refined
 
-def scale_corners(corners, from_shape, to_shape):
-    scale = np.array([to_shape[1] / from_shape[1], to_shape[0] / from_shape[0]], np.float32)
-    return [(np.asarray(q, np.float32) * scale + (scale - 1) / 2).astype(np.float32) for q in corners]
-
 def DETECT_TAGS(image: MatLike, refine_image: MatLike = None):
     global _detector
     if _detector is not None:
@@ -97,9 +93,6 @@ def DETECT_TAGS(image: MatLike, refine_image: MatLike = None):
 
     if IDs is None:
         return corners, None
-
-    if refine_image is not None and refine_image.shape[:2] != image.shape[:2]:
-        corners = scale_corners(corners, image.shape, refine_image.shape)
 
     if corner_refine.valueInt() > 0:
         corners = _refine_corners(corners, refine_image if refine_image is not None else image)

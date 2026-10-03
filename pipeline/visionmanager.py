@@ -12,7 +12,6 @@ import os
 from datetime import datetime
 from threading import Thread, Lock
 from camera.preprocess import PROCESS_FRAME
-from util.config import ConfigCategory
 from util.logger import Logger
 
 logger = Logger("VisionManager")
@@ -39,7 +38,6 @@ class CameraPipeline:
         use_high_res = self.pipeline_type in ("apriltag", "raw")
 
         settings_category = f"Camera{self.camera_id}"
-        self.decimate = ConfigCategory(settings_category).getFloatConfig("decimate", 1.0)
         if platform.system() == "Windows" or platform.system() == "Darwin":
             self.cam = CameraReader(self.device_id if self.camera_id == 0 else self.camera_id - 1, use_high_res, settings_category)
         else:
@@ -119,18 +117,10 @@ class CameraPipeline:
             tags = None
             if self.pipeline_type == "apriltag":
                 raw_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
-                decimate = self.get_decimation()
-                if decimate > 1:
-                    frame = cv2.resize(raw_gray, None, fx=1 / decimate, fy=1 / decimate, interpolation=cv2.INTER_AREA)
-                else:
-                    frame = raw_gray
-                frame = PROCESS_FRAME(frame)
+                frame = PROCESS_FRAME(raw_gray)
                 corners, ids = localization.detection.DETECT_TAGS(frame, refine_image=raw_gray)
                 display_frame = frame
-                if frame.shape != raw_gray.shape:
-                    tags = (localization.detection.scale_corners(corners, raw_gray.shape, frame.shape), ids)
-                else:
-                    tags = (corners, ids)
+                tags = (corners, ids)
                 detections = localization.apriltag_solution.CALCULATE_PARTIAL_SOLUTION(
                     self.camera_id, raw_gray, corners, ids
                 )
@@ -264,11 +254,6 @@ class CameraPipeline:
                 self._overlay = localization.detection.ANNOTATE_TAGS(self.frame, *self._tags)
                 self._overlay_src = self.frame
             return self._overlay
-
-    def get_decimation(self) -> float:
-        if self.cam.get_resolution() != (1280, 800):
-            return 1.0
-        return max(1.0, self.decimate.valueFloat())
 
     def get_detections(self):
         with self.lock:
