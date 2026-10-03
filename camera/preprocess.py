@@ -13,7 +13,7 @@ min_corr_strength = pref_category.getFloatConfig("min_corr_strength", 0.1)
 corr_divisor = pref_category.getFloatConfig("corr_divisor", 400.0)
 divergence_gain = pref_category.getFloatConfig("divergence_gain", 1.5)
 
-@njit_cached()
+@njit_cached(nogil=True)
 def COMPUTE_CORRECTION_MATRIX(image: np.ndarray, bins_per_side: int, target_brightness: int) -> np.ndarray:
     height, width = image.shape
     bin_height = height // bins_per_side
@@ -28,7 +28,7 @@ def COMPUTE_CORRECTION_MATRIX(image: np.ndarray, bins_per_side: int, target_brig
 
     return correction_matrix
 
-def BIN_BASED_CORRECT(image: np.ndarray, acc_num_bins: int, target_brightness: int, min_corr_strength: float, corr_divisor: float) -> np.ndarray:
+def BIN_BASED_CORRECTION(image: np.ndarray, acc_num_bins: int, target_brightness: int, min_corr_strength: float, corr_divisor: float) -> Tuple[np.ndarray, float, float]:
     height, width = image.shape
     num_bins = acc_num_bins
     bins_per_side = int(np.sqrt(num_bins))
@@ -40,23 +40,30 @@ def BIN_BASED_CORRECT(image: np.ndarray, acc_num_bins: int, target_brightness: i
 
     correction_matrix = cv2.blur(correction_matrix, (3, 3), 0)
 
-    correction_matrix = cv2.resize(correction_matrix, (width, height), interpolation=cv2.INTER_LINEAR)
+    correction_matrix = cv2.resize(correction_matrix.astype(np.float32), (width, height), interpolation=cv2.INTER_LINEAR)
 
-    return image.astype(np.float32) + correction_matrix * corr_strength
+    corrected_mean = mean + corr_strength * cv2.mean(correction_matrix)[0]
 
-@njit_cached()
-def DIVERGING_MOD(image: np.ndarray, divergence_gain: float) -> np.ndarray:
-    mean = np.mean(image)
+    return correction_matrix, corr_strength, corrected_mean
 
-    corrected_image = image * ((divergence_gain * (image - mean) + mean) / mean)
-    corrected_image = np.clip(corrected_image, 0, 255).astype(np.uint8)
+@njit_cached(nogil=True)
+def CORRECT_AND_DIVERGE(image: np.ndarray, correction_matrix: np.ndarray, corr_strength: float, divergence_gain: float, mean: float) -> np.ndarray:
+    height, width = image.shape
+
+    corrected_image = np.empty((height, width), np.uint8)
+    for y in range(height):
+        for x in range(width):
+            v = image[y, x] + correction_matrix[y, x] * corr_strength
+            v = v * ((divergence_gain * (v - mean) + mean) / mean)
+            corrected_image[y, x] = min(max(v, 0.0), 255.0)
 
     return corrected_image
 
-def PROCESS_FRAME(image: MatLike) -> Tuple[MatLike, float]:
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image = BIN_BASED_CORRECT(image, acc_num_bins.valueInt(), target_brightness.valueInt(), min_corr_strength.valueFloat(), corr_divisor.valueFloat())
-    image = DIVERGING_MOD(image, divergence_gain.valueFloat())
+def PROCESS_FRAME(image: MatLike) -> MatLike:
+    if image.ndim == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    correction_matrix, corr_strength, mean = BIN_BASED_CORRECTION(image, acc_num_bins.valueInt(), target_brightness.valueInt(), min_corr_strength.valueFloat(), corr_divisor.valueFloat())
+    image = CORRECT_AND_DIVERGE(image, correction_matrix, corr_strength, divergence_gain.valueFloat(), mean)
 
     return image
 

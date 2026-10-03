@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from localization.undistort import GET_CAMERA_ANGLES, load_calibration
+from localization.undistort import GET_CAMERA_ANGLES, load_calibration, calibration_for
 from util.config import ConfigCategory, Config
 from util.logger import Logger
 from cv2.typing import MatLike
@@ -64,6 +64,10 @@ def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, all_corners, all_
         logger.Warn(f"No AprilTag params for camera {camera_id}; call SET_CAM first")
         return result
 
+    height, width = image.shape[:2]
+    if calibration_for(camera_id, width, height) is None:
+        return result
+
     cam_angle_h = params["CAM_MOUNT_H_deg"].valueFloat()
     cam_angle_v = params["CAM_MOUNT_V_deg"].valueFloat()
     tag_h = params["TAG_H_in"].valueFloat()
@@ -99,13 +103,24 @@ def CALCULATE_PARTIAL_SOLUTION(camera_id: int, image: MatLike, all_corners, all_
             camera_id,
             None,
         )
-        tx_c += cam_angle_h
 
-        r_cam: float = tag_h / abs(
-            math.tan(math.radians(ty_t + cam_angle_v))
-            - math.tan(math.radians(ty_b + cam_angle_v))
+        subtense = math.tan(math.radians(ty_t + cam_angle_v)) - math.tan(
+            math.radians(ty_b + cam_angle_v)
         )
-        r_ground = r_cam / math.cos(math.radians(tx_c - cam_angle_h))
-        result.append(Detection(r_ground, tx_c, tID))
+        if abs(subtense) < 1e-9:
+            logger.Warn(
+                f"Camera {camera_id}: divide by zero, check if camera has calibration"
+            )
+            continue
+        d_forward: float = tag_h / abs(subtense)
+
+        pitch = math.radians(cam_angle_v)
+        x_n = math.tan(math.radians(tx_c))
+        y_n_up = math.tan(math.radians(ty_c))
+        bearing = math.atan2(x_n, math.cos(pitch) - y_n_up * math.sin(pitch))
+
+        r_ground = d_forward / math.cos(bearing)
+        theta = math.degrees(bearing) + cam_angle_h
+        result.append(Detection(r_ground, theta, tID))
 
     return result

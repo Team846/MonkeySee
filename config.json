@@ -1,85 +1,235 @@
 {
-  "development": false,
-  "cameras": [
-    {
-      "id": 1,
-      "name": "ATCam1",
-      "device_id": "ATCam1",
-      "pipeline": "apriltag",
-      "apriltag_config": "AprilTag1",
-      "enabled": true
+    "development": false,
+    "cameras": [
+        {
+            "id": 1,
+            "name": "ATCam1",
+            "device_id": "ATCam1",
+            "pipeline": "apriltag",
+            "apriltag_config": "AprilTag1",
+            "enabled": true
+        },
+        {
+            "id": 2,
+            "name": "ATCam2",
+            "device_id": "ATCam2",
+            "pipeline": "apriltag",
+            "apriltag_config": "AprilTag2",
+            "enabled": true
+        },
+        {
+            "id": 3,
+            "name": "ATCam3",
+            "device_id": "ATCam3",
+            "pipeline": "apriltag",
+            "apriltag_config": "AprilTag3",
+            "enabled": false
+        },
+        {
+            "id": 4,
+            "name": "ATCam4",
+            "device_id": "ATCam4",
+            "pipeline": "apriltag",
+            "apriltag_config": "AprilTag4",
+            "enabled": true
+        }
+    ],
+    "network_tables": {
+        "server": "10.8.46.2",
+        "team_number": 846
     },
-    {
-      "id": 2,
-      "name": "ATCam2",
-      "device_id": "ATCam2",
-      "pipeline": "apriltag",
-      "apriltag_config": "AprilTag2",
-      "enabled": true
+    "Detection": {
+        "min_thresh_win": {
+            "value": "3",
+            "type": 1
+        },
+        "max_thresh_win": {
+            "value": "23",
+            "type": 1
+        },
+        "thresh_step": {
+            "value": "17",
+            "type": 1
+        },
+        "corner_refine": {
+            "value": "1",
+            "type": 1
+        },
+        "corner_refine_win": {
+            "value": "5",
+            "type": 1
+        },
+        "corner_refine_iters": {
+            "value": "30",
+            "type": 1
+        },
+        "corner_refine_eps": {
+            "value": "0.01",
+            "type": 2
+        },
+        "persp_px_per_cell": {
+            "value": "10",
+            "type": 1
+        }
     },
-    {
-      "id": 3,
-      "name": "ATCam3",
-      "device_id": "ATCam3",
-      "pipeline": "apriltag",
-      "apriltag_config": "AprilTag3",
-      "enabled": false
+    "visionY": {
+        "CONFIDENCE": {
+            "value": "0.35",
+            "type": 2
+        },
+        "ASPECT_THRESH": {
+            "value": "0.3",
+            "type": 2
+        }
     },
-    {
-      "id": 4,
-      "name": "ATCam4",
-      "device_id": "ATCam4",
-      "pipeline": "apriltag",
-      "apriltag_config": "AprilTag4",
-      "enabled": true
+    "GamePieceSolution": {
+        "WD": {
+            "value": "15.5",
+            "type": 2
+        },
+        "ONT": {
+            "value": "10.0",
+            "type": 2
+        }
+    },
+    "Preprocessing": {
+        "acc_num_bins": {
+            "value": "1200",
+            "type": 1
+        },
+        "target_brightness": {
+            "value": "155",
+            "type": 1
+        },
+        "min_corr_strength": {
+            "value": "0.12",
+            "type": 2
+        },
+        "corr_divisor": {
+            "value": "400.0",
+            "type": 2
+        },
+        "divergence_gain": {
+            "value": "1.3",
+            "type": 2
+        }
+    },
+    "Numba": {
+        "cache": {
+            "value": "1",
+            "type": 1
+        }
+    },
+    "HTMLServer": {
+        "framecomp_slider": {
+            "value": "0.05",
+            "type": 2
+        }
+    },
+    "AprilTag0": {
+        "CAM_MOUNT_H_deg": {
+            "value": "180.0",
+            "type": 2
+        },
+        "CAM_MOUNT_V_deg": {
+            "value": "0.0",
+            "type": 2
+        },
+        "TAG_H_in": {
+            "value": "6.5",
+            "type": 2
+        }
+    },
+    "AprilTag1": {
+        "CAM_MOUNT_H_deg": {
+            "value": "180.0",
+            "type": 2
+        },
+        "CAM_MOUNT_V_deg": {
+            "value": "0.0",
+            "type": 2
+        },
+        "TAG_H_in": {
+            "value": "6.5",
+            "type": 2
+        }
+    },
+    "AprilTag2": {
+        "CAM_MOUNT_H_deg": {
+            "value": "90.0",
+            "type": 2
+        },
+        "CAM_MOUNT_V_deg": {
+            "value": "0.0",
+            "type": 2
+        },
+        "TAG_H_in": {
+            "value": "6.5",
+            "type": 2
+        }
+    },
+    "AprilTag3": {
+        "CAM_MOUNT_H_deg": {
+            "value": "90.0",
+            "type": 2
+        },
+        "CAM_MOUNT_V_deg": {
+            "value": "0.0",
+            "type": 2
+        },
+        "TAG_H_in": {
+            "value": "6.5",
+            "type": 2
+        }
+    },
+    "AprilTag4": {
+        "CAM_MOUNT_H_deg": {
+            "value": "0.0",
+            "type": 2
+        },
+        "CAM_MOUNT_V_deg": {
+            "value": "21.0",
+            "type": 2
+        },
+        "TAG_H_in": {
+            "value": "6.5",
+            "type": 2
+        }
+    },
+    "Camera0": {
+        "auto_exposure": {
+            "value": "1",
+            "type": 1
+        },
+        "exposure": {
+            "value": "20",
+            "type": 1
+        },
+        "gain": {
+            "value": "50",
+            "type": 1
+        },
+        "width": {
+            "value": "800",
+            "type": 1
+        },
+        "height": {
+            "value": "600",
+            "type": 1
+        }
+    },
+    "Calibration": {
+        "fix_principal_point": {
+            "value": "0",
+            "type": 1
+        },
+        "zero_tangent_dist": {
+            "value": "0",
+            "type": 1
+        },
+        "save_samples": {
+            "value": "0",
+            "type": 1
+        }
     }
-  ],
-  "network_tables": { "server": "10.8.46.2", "team_number": 846 },
-  "Detection": {
-    "min_thresh_win": { "value": "3", "type": 1 },
-    "max_thresh_win": { "value": "23", "type": 1 },
-    "thresh_step": { "value": "17", "type": 1 }
-  },
-  "visionY": {
-    "CONFIDENCE": { "value": "0.35", "type": 2 },
-    "ASPECT_THRESH": { "value": "0.3", "type": 2 }
-  },
-  "GamePieceSolution": {
-    "WD": { "value": "15.5", "type": 2 },
-    "ONT": { "value": "10.0", "type": 2 }
-  },
-  "Preprocessing": {
-    "acc_num_bins": { "value": "1200", "type": 1 },
-    "target_brightness": { "value": "155", "type": 1 },
-    "min_corr_strength": { "value": "0.12", "type": 2 },
-    "corr_divisor": { "value": "400.0", "type": 2 },
-    "divergence_gain": { "value": "1.3", "type": 2 }
-  },
-  "Numba": { "cache": { "value": "1", "type": 1 } },
-  "HTMLServer": { "framecomp_slider": { "value": "0.05", "type": 2 } },
-  "AprilTag0": {
-    "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
-    "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
-    "TAG_H_in": { "value": "6.5", "type": 2 }
-  },
-  "AprilTag1": {
-    "CAM_MOUNT_H_deg": { "value": "180.0", "type": 2 },
-    "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
-    "TAG_H_in": { "value": "6.5", "type": 2 }
-  },
-  "AprilTag2": {
-    "CAM_MOUNT_H_deg": { "value": "90.0", "type": 2 },
-    "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
-    "TAG_H_in": { "value": "6.5", "type": 2 }
-  },
-  "AprilTag3": {
-    "CAM_MOUNT_H_deg": { "value": "90.0", "type": 2 },
-    "CAM_MOUNT_V_deg": { "value": "0.0", "type": 2 },
-    "TAG_H_in": { "value": "6.5", "type": 2 }
-  },
-  "AprilTag4": {
-    "CAM_MOUNT_H_deg": { "value": "0.0", "type": 2 },
-    "CAM_MOUNT_V_deg": { "value": "21.0", "type": 2 },
-    "TAG_H_in": { "value": "6.5", "type": 2 }
-  }
 }

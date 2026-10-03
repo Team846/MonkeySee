@@ -1,9 +1,9 @@
 import cv2
 import numpy as np
-import json
 from typing import List, Tuple, Optional, Dict, Callable
 from threading import Lock
 from util.logger import Logger
+from localization.undistort import store_calibration
 import time
 
 logger = Logger("CharucoCalibrator")
@@ -660,30 +660,18 @@ class CharucoCalibrator:
                 self.status_message = f"Error: {str(e)}"
             return None
     
-    def save_calibration(self, output_path: str = "cal.json") -> bool:
+    def save_calibration(self) -> bool:
         if self.calibration_result is None:
             logger.Error("No calibration result to save")
             return False
-        
         try:
-            try:
-                with open(output_path, 'r') as f:
-                    all_calibrations = json.load(f)
-            except FileNotFoundError:
-                all_calibrations = {}
-            
-            all_calibrations[str(self.camera_id)] = self.calibration_result
-            
-            with open(output_path, 'w') as f:
-                json.dump(all_calibrations, f, indent=2)
-            
-            logger.Log(f"Calibration saved for camera {self.camera_id} to {output_path}")
+            store_calibration(self.camera_id, self.calibration_result)
+            logger.Log(f"Calibration saved for camera {self.camera_id}")
             return True
-            
         except Exception as e:
             logger.Error(f"Failed to save calibration: {e}")
             return False
-    
+
     def reset(self):
         with self.lock:
             num_samples = len(self.all_corners)
