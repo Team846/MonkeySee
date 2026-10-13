@@ -18,11 +18,18 @@ def COMPUTE_CORRECTION_MATRIX(image: np.ndarray, bins_per_side: int, target_brig
     height, width = image.shape
     bin_height = height // bins_per_side
     bin_width = width // bins_per_side
+    bin_area = bin_height * bin_width
+    used_width = bins_per_side * bin_width
 
-    bin_means = np.array([
-        np.mean(image[i * bin_height:(i + 1) * bin_height, j * bin_width:(j + 1) * bin_width])
-        for i in range(bins_per_side) for j in range(bins_per_side)
-    ]).reshape(bins_per_side, bins_per_side)
+    bin_means = np.empty((bins_per_side, bins_per_side))
+    column_sums = np.empty(used_width, np.uint32)
+    for i in range(bins_per_side):
+        column_sums[:] = 0
+        for y in range(i * bin_height, (i + 1) * bin_height):
+            for x in range(used_width):
+                column_sums[x] += image[y, x]
+        for j in range(bins_per_side):
+            bin_means[i, j] = column_sums[j * bin_width:(j + 1) * bin_width].sum() / bin_area
 
     correction_matrix = target_brightness - bin_means
 
@@ -33,7 +40,7 @@ def BIN_BASED_CORRECTION(image: np.ndarray, acc_num_bins: int, target_brightness
     num_bins = acc_num_bins
     bins_per_side = int(np.sqrt(num_bins))
 
-    mean = np.mean(image)
+    mean = cv2.mean(image)[0]
     corr_strength = abs(target_brightness - mean) / corr_divisor + min_corr_strength
 
     correction_matrix = COMPUTE_CORRECTION_MATRIX(image, bins_per_side, target_brightness)
@@ -49,13 +56,18 @@ def BIN_BASED_CORRECTION(image: np.ndarray, acc_num_bins: int, target_brightness
 @njit_cached(nogil=True)
 def CORRECT_AND_DIVERGE(image: np.ndarray, correction_matrix: np.ndarray, corr_strength: float, divergence_gain: float, mean: float) -> np.ndarray:
     height, width = image.shape
+    strength = np.float32(corr_strength)
+    slope = np.float32(divergence_gain / mean)
+    offset = np.float32(1.0 - divergence_gain)
+    low = np.float32(0.0)
+    high = np.float32(255.0)
 
     corrected_image = np.empty((height, width), np.uint8)
     for y in range(height):
         for x in range(width):
-            v = image[y, x] + correction_matrix[y, x] * corr_strength
-            v = v * ((divergence_gain * (v - mean) + mean) / mean)
-            corrected_image[y, x] = min(max(v, 0.0), 255.0)
+            v = np.float32(image[y, x]) + correction_matrix[y, x] * strength
+            v = v * (slope * v + offset)
+            corrected_image[y, x] = min(max(v, low), high)
 
     return corrected_image
 
@@ -90,3 +102,16 @@ def GET_MIN_CORR_STRENGTH() -> float:
 
 def SET_MIN_CORR_STRENGTH(value: float) -> None:
     min_corr_strength.setFloat(value)
+
+if __name__ == "__main__":
+    image = np.random.default_rng(0).integers(0, 256, (600, 800), dtype=np.uint8)
+    bins = 34
+    bin_height, bin_width = 600 // bins, 800 // bins
+    expected = 155 - image[:bin_height * bins, :bin_width * bins].reshape(bins, bin_height, bins, bin_width).mean(axis=(1, 3))
+    assert np.allclose(COMPUTE_CORRECTION_MATRIX(image, bins, 155), expected)
+
+    matrix, strength, mean = BIN_BASED_CORRECTION(image, bins * bins, 155, 0.1, 400.0)
+    v = image + matrix * strength
+    expected = np.clip(v * ((1.5 * (v - mean) + mean) / mean), 0, 255).astype(np.uint8)
+    assert np.abs(CORRECT_AND_DIVERGE(image, matrix, strength, 1.5, mean).astype(int) - expected).max() <= 1
+    print("preprocess ok")
