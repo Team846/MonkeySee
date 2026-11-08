@@ -1,5 +1,5 @@
 import math
-from dash import Dash, html, dcc, Input, Output, State, ALL, MATCH
+from dash import Dash, html, dcc, Input, Output, State, ALL, MATCH, ctx
 import cv2
 from flask import Flask, Response, jsonify, request
 from pipeline.visionmanager import VisionManager
@@ -442,7 +442,7 @@ class DashboardServer:
 
             dcc.Checklist(
                 id={'type': 'auto-exposure', 'index': cam_id},
-                options=[{'label': ' Auto Exposure', 'value': 'auto'}],
+                options=[{'label': ' Auto Gain', 'value': 'auto'}],
                 value=['auto'] if auto else [],
                 style={
                     "color": "#CCC9CA",
@@ -462,7 +462,6 @@ class DashboardServer:
                 max=EXPOSURE_SLIDER_MAX,
                 step=1,
                 value=min(settings["exposure"], EXPOSURE_SLIDER_MAX),
-                disabled=auto,
                 marks={1: '1', EXPOSURE_SLIDER_MAX: str(EXPOSURE_SLIDER_MAX)},
                 tooltip={"placement": "bottom", "always_visible": True},
                 className="funky-slider"
@@ -486,6 +485,20 @@ class DashboardServer:
                 className="funky-slider"
             ),
             html.Br(),
+
+            html.Button("Retune Gain", id={'type': 'retune-gain', 'index': cam_id}, disabled=not auto, style={
+                "margin": "10px 15px 0",
+                "font-size": "14px",
+                "color": "#161616",
+                "background-color": "rgba(100, 200, 255, 1)",
+                "border": "none",
+                "padding": "8px 16px",
+                "width": "145px",
+                "height": "40px",
+                "border-radius": "20px",
+                "cursor": "pointer",
+                "font-weight": "bold"
+            }),
 
             html.Div(settings["status"], id={'type': 'exposure-status', 'index': cam_id}, style={
                 'color': '#CCC9CA',
@@ -1160,21 +1173,26 @@ class DashboardServer:
             return value
         
         @self.app.callback(
-            [Output({'type': 'exposure', 'index': MATCH}, 'disabled'),
-             Output({'type': 'gain', 'index': MATCH}, 'disabled'),
+            [Output({'type': 'gain', 'index': MATCH}, 'disabled'),
+             Output({'type': 'retune-gain', 'index': MATCH}, 'disabled'),
              Output({'type': 'exposure-status', 'index': MATCH}, 'children')],
             [Input({'type': 'auto-exposure', 'index': MATCH}, 'value'),
              Input({'type': 'exposure', 'index': MATCH}, 'value'),
-             Input({'type': 'gain', 'index': MATCH}, 'value')],
+             Input({'type': 'gain', 'index': MATCH}, 'value'),
+             Input({'type': 'retune-gain', 'index': MATCH}, 'n_clicks')],
             prevent_initial_call=True
         )
-        def update_exposure(auto_value, exposure, gain):
+        def update_exposure(auto_value, exposure, gain, _retune_clicks):
             auto = 'auto' in (auto_value or [])
             pipeline = self.vision_manager.get_pipeline(self.camera_id)
             if not pipeline or exposure is None or gain is None:
-                return auto, auto, no_update
-            pipeline.cam.set_exposure_settings(auto, int(exposure), int(gain))
-            return auto, auto, pipeline.cam.get_exposure_settings()["status"]
+                return auto, not auto, no_update
+            if (ctx.triggered_id or {}).get('type') == 'retune-gain':
+                pipeline.cam.retune_gain()
+            else:
+                pipeline.cam.set_exposure_settings(auto, int(exposure), int(gain))
+            pipeline.cam.wait_for_gain()
+            return auto, not auto, pipeline.cam.get_exposure_settings()["status"]
 
         @self.app.callback(
             Output({'type': 'resolution-status', 'index': MATCH}, 'children'),

@@ -70,6 +70,7 @@ class CameraPipeline:
         if self.pipeline_type == "apriltag":
             apriltag_section = camera_config.get("apriltag_config", f"AprilTag{self.camera_id}")
             localization.apriltag_solution.SET_CAM(self.camera_id, apriltag_section)
+            self._apriltag = localization.detection.MAKE_APRILTAG_DETECTOR(apriltag_section)
             self.ntables = pipeline.ntables.AprilTagNTables(self.camera_id)
         elif self.pipeline_type == "raw":
             self.ntables = _NullNTables()
@@ -117,8 +118,14 @@ class CameraPipeline:
             tags = None
             if self.pipeline_type == "apriltag":
                 raw_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
-                frame = PROCESS_FRAME(raw_gray)
-                corners, ids = localization.detection.DETECT_TAGS(frame, refine_image=raw_gray)
+                if self._apriltag is not None:
+                    frame = raw_gray
+                    corners, ids = self._apriltag(raw_gray)
+                else:
+                    frame = PROCESS_FRAME(raw_gray)
+                    corners, ids = localization.detection.DETECT_TAGS(frame, refine_image=raw_gray)
+                if ids is not None:
+                    self.cam.note_tags(raw_gray, corners)
                 display_frame = frame
                 tags = (corners, ids)
                 detections = localization.apriltag_solution.CALCULATE_PARTIAL_SOLUTION(

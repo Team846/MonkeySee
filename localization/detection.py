@@ -101,6 +101,56 @@ def DETECT_TAGS(image: MatLike, refine_image: MatLike = None):
 
     return corners, IDs.flatten()
 
+def MAKE_APRILTAG_DETECTOR(section: str):
+    settings = ConfigCategory(section)
+    napa_min_tag_px = settings.getIntConfig("napa_min_tag_px", 0).valueInt()
+    if napa_min_tag_px > 0:
+        try:
+            from napa_vision import NapaDetector
+        except ImportError:
+            logger.Warn(f"{section}: napa_vision not installed, trying robotpy_apriltag")
+        else:
+            napa = NapaDetector(min_tag_px=napa_min_tag_px, max_hamming=1, min_contrast=12)
+            logger.Log(f"{section}: NAPA detector, min_tag_px {napa_min_tag_px}")
+            return lambda image: DETECT_NAPA(napa, image)
+
+    decimate = settings.getIntConfig("apriltag_decimate", 0).valueInt()
+    if decimate <= 0:
+        return None
+    try:
+        import robotpy_apriltag
+    except ImportError:
+        logger.Warn(f"{section}: robotpy_apriltag not installed, using ArUco")
+        return None
+    detector = robotpy_apriltag.AprilTagDetector()
+    detector.addFamily("tag36h11")
+    config = detector.getConfig()
+    config.quadDecimate = float(decimate)
+    config.numThreads = 1
+    detector.setConfig(config)
+    quad = detector.getQuadThresholdParameters()
+    quad.minClusterPixels = 5
+    detector.setQuadThresholdParameters(quad)
+    logger.Log(f"{section}: AprilTag detector, decimate {decimate}")
+    return lambda image: DETECT_APRILTAGS(detector, image)
+
+def DETECT_NAPA(detector, image: MatLike):
+    tags = detector.detect(image)
+    if not tags:
+        return [], None
+    corners = [np.asarray(t.corners, dtype=np.float32)[[2, 3, 0, 1]].reshape(1, 4, 2) for t in tags]
+    return corners, np.array([t.tag_id for t in tags], dtype=np.int32)
+
+def DETECT_APRILTAGS(detector, image: MatLike):
+    tags = [t for t in detector.detect(image) if t.getHamming() == 0]
+    if not tags:
+        return [], None
+    corners = [
+        np.array([[[t.getCorner(i).x - 0.5, t.getCorner(i).y - 0.5] for i in (3, 2, 1, 0)]], dtype=np.float32)
+        for t in tags
+    ]
+    return corners, np.array([t.getId() for t in tags], dtype=np.int32)
+
 def ANNOTATE_TAGS(image: MatLike, corners, IDs) -> MatLike:
     image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     if IDs is not None:

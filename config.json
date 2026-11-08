@@ -138,6 +138,14 @@
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
+        },
+        "apriltag_decimate": {
+            "value": "0",
+            "type": 1
+        },
+        "napa_min_tag_px": {
+            "value": "0",
+            "type": 1
         }
     },
     "AprilTag1": {
@@ -198,7 +206,7 @@
     },
     "Camera0": {
         "auto_exposure": {
-            "value": "1",
+            "value": "0",
             "type": 1
         },
         "exposure": {
@@ -215,6 +223,14 @@
         },
         "height": {
             "value": "600",
+            "type": 1
+        },
+        "gain_target": {
+            "value": "100",
+            "type": 1
+        },
+        "tag_white_target": {
+            "value": "190",
             "type": 1
         }
     },
