@@ -3,9 +3,12 @@ import ntcore
 from time import monotonic_ns
 from typing import Optional, Tuple
 
+from pipeline.timesync import TimeSync
+
 _nt_instance = None
 _initialized = False
 _server_address = "10.8.46.2"
+_time_sync: Optional[TimeSync] = None
 
 _PUB_OPTIONS = ntcore.PubSubOptions(periodic=0.01, sendAll=True)
 
@@ -33,8 +36,17 @@ def get_nt_instance():
         _initialized = True
     return _nt_instance
 
+def get_time_sync() -> TimeSync:
+    global _time_sync
+    if _time_sync is None:
+        _time_sync = TimeSync(_server_address)
+    return _time_sync
+
 def capture_stamp(capture_ns: int) -> Tuple[float, float]:
     age_s = (monotonic_ns() - capture_ns) / 1e9
+    synced_s = get_time_sync().to_robot_time_s(capture_ns)
+    if synced_s is not None:
+        return synced_s, age_s
     offset_us = get_nt_instance().getServerTimeOffset()
     if offset_us is None:
         return -1.0, age_s
@@ -52,9 +64,11 @@ class AprilTagNTables:
         self.tags_pub = self.table.getDoubleArrayTopic("tags").publish(_PUB_OPTIONS)
         self.frame_num_pub = self.table.getDoubleTopic("curFrameNum").publish(_PUB_OPTIONS)
         self.result_pub = self.table.getDoubleArrayTopic("result").publish(_PUB_OPTIONS)
+        self.sync_rtt_pub = self.table.getDoubleTopic("sync_rtt_ms").publish(_PUB_OPTIONS)
 
     def execute(self, detections, latency, capture_ns):
         self.latency_pub.set(latency)
+        self.sync_rtt_pub.set(get_time_sync().rtt_ms())
 
         angles: List[float] = []
         distances: List[float] = []

@@ -338,7 +338,7 @@ class CheckerboardCalibrator:
                 self.status_message = "Running calibration... (10%)"
 
             obj_points = [self._object_points] * len(samples)
-            ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
+            ret, camera_matrix, dist_coeffs, *_, per_view = cv2.calibrateCameraExtended(
                 obj_points,
                 samples,
                 (width, height),
@@ -346,6 +346,19 @@ class CheckerboardCalibrator:
                 dist_coeffs_init,
                 flags=cal_flags,
             )
+            per_view = np.ravel(per_view)
+            keep = [s for s, e in zip(samples, per_view) if e < 2.0 * np.median(per_view)]
+            if self.MIN_SAMPLES <= len(keep) < len(samples):
+                logger.Log(f"Dropped {len(samples) - len(keep)} samples with over twice the median error, refitting")
+                samples = keep
+                ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
+                    [self._object_points] * len(samples),
+                    samples,
+                    (width, height),
+                    camera_matrix,
+                    dist_coeffs,
+                    flags=cal_flags,
+                )
             mean_error = float(ret)
             if camera_matrix is None or np.any(np.isnan(camera_matrix)):
                 raise ValueError("calibrateCamera returned invalid camera matrix")

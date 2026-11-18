@@ -22,6 +22,7 @@ AUTO_GAIN_EVERY = 10
 AUTO_GAIN_STUCK_STEPS = 40
 AUTO_GAIN_WINDOW = (0.5, 1.7)
 AUTO_GAIN_RETUNE_STEPS = 30
+AUTO_GAIN_MAX_STEP = 1.25
 TAG_WHITE_CLIPPED = 250
 
 def tag_white(frame: MatLike, corners) -> Optional[float]:
@@ -38,12 +39,12 @@ def tag_white(frame: MatLike, corners) -> Optional[float]:
             whites.append(np.percentile(pixels, 90))
     return float(np.median(whites)) if whites else None
 
-def next_gain(gain: int, mean: float, target: float) -> Tuple[int, int]:
+def next_gain(gain: int, mean: float, target: float, step: float = AUTO_GAIN_MAX_STEP) -> Tuple[int, int]:
     ratio = target / max(mean, 1.0)
     if 0.9 < ratio < 1.1:
         return gain, 0
     push = 1 if ratio > 1 else -1
-    new = round(gain * min(max(ratio, 0.8), 1.25))
+    new = round(gain * min(max(ratio, 1 / step), step))
     if new == gain:
         new += push
     return min(max(new, 0), GAIN_MAX), push
@@ -73,6 +74,7 @@ class CameraReader:
         self._gain_push = 0
         self._gain_push_steps = 0
         self._gain_push_start = self._live_gain
+        self._gain_step = AUTO_GAIN_MAX_STEP
         self._gain_stuck = False
         self._gain_locked = True
         self._gain_outside = 0
@@ -100,10 +102,12 @@ class CameraReader:
         self.cap: Optional[cv2.VideoCapture] = None
         self.fail_count = 0
         self._opened = False
+        self._reapply_exposure = False
 
         self._lock = Lock()
         self._last_frame: Optional[MatLike] = None
         self._last_frame_at = 0.0
+        self.last_jpeg: Optional[MatLike] = None
 
     def _open_camera_locked(self):
         logger.Log("Opening camera...")
@@ -137,6 +141,7 @@ class CameraReader:
             self.cap.set(cv2.CAP_PROP_FPS, 60)
 
         self._apply_exposure_locked()
+        self._reapply_exposure = True
 
         self.fail_count = 0
         try:
@@ -231,7 +236,10 @@ class CameraReader:
             self._gain_locked = False
             self._gain_save_on_lock = False
             logger.Log(f"{self.camera_id}: tag white {measured:.0f} stayed outside {low:.0f}-{high:.0f}, re-tuning gain until restart")
-        gain, push = next_gain(self._live_gain, measured, target)
+        gain, push = next_gain(self._live_gain, measured, target, self._gain_step)
+        if push and self._gain_push and push != self._gain_push:
+            self._gain_step = 1 + (self._gain_step - 1) / 2
+            gain, push = next_gain(self._live_gain, measured, target, self._gain_step)
         if push == 0 or push != self._gain_push:
             self._gain_push_steps = 0
             self._gain_push_start = self._live_gain
@@ -241,6 +249,7 @@ class CameraReader:
 
         if push == 0:
             self._gain_locked = True
+            self._gain_step = AUTO_GAIN_MAX_STEP
             self._gain_outside = 0
             self._gain_stuck = False
             if self._gain_save_on_lock:
@@ -273,6 +282,7 @@ class CameraReader:
         with self._lock:
             self._gain_locked = False
             self._gain_push_steps = 0
+            self._gain_step = AUTO_GAIN_MAX_STEP
             self._gain_stuck = False
             self._gain_save_on_lock = True
 
@@ -333,13 +343,18 @@ class CameraReader:
                 return None, monotonic_ns()
 
             ret, frame = self.cap.read()
+            self.last_jpeg = None
             if ret and frame is not None and frame.ndim == 2 and min(frame.shape) == 1:
+                self.last_jpeg = frame
                 frame = cv2.imdecode(frame, cv2.IMREAD_GRAYSCALE)
 
             if ret and frame is not None:
                 self.fail_count = 0
                 self._last_frame = frame
                 self._last_frame_at = monotonic()
+                if self._reapply_exposure:
+                    self._reapply_exposure = False
+                    self._apply_exposure_locked()
                 captured = self._capture_time_ns_locked()
                 if platform.system() == "Linux":
                     self._auto_gain_locked(frame)
@@ -418,18 +433,24 @@ if __name__ == "__main__":
         cam._live_gain, cam._frames_since_gain, cam._gain_push, cam._gain_push_steps, cam._gain_push_start = 50, 0, 0, 0, 50
         cam._gain_stuck, cam._gain_locked, cam._gain_outside, cam._gain_save_on_lock = False, False, 0, True
         cam._tag_frame, cam._tag_corners, cam._frames_since_tags = None, None, AUTO_GAIN_EVERY + 1
-        cam._gain_source, cam._exposure_status = "frame average", ""
+        cam._gain_source, cam._exposure_status, cam._gain_step = "frame average", "", AUTO_GAIN_MAX_STEP
         return cam
 
-    def run(cam, background, white=None, seconds=10):
+    def run(cam, background, white=None, seconds=10, curve=lambda g: g):
         for _ in range(60 * seconds):
-            g = cam.cap.gain
+            g = curve(cam.cap.gain)
             frame = np.full((60, 80), min(background * g + 3, 255), np.uint8)
             if white is not None:
                 frame[20:40, 20:40] = min(white * g + 3, 255)
                 cam.note_tags(frame, [QUAD])
             cam._auto_gain_locked(frame)
         return cam
+
+    decibel = lambda g: 50 * 10 ** ((g - 50) * 0.015)
+    for background, white in ((0.3, 1.0), (0.1, None), (1.0, 0.4)):
+        cam = run(fake_camera(), background, white, curve=decibel)
+        level = (white or background) * decibel(cam.cap.gain) + 3
+        assert cam._gain_locked and abs(level - (190 if white else 100)) <= 0.1 * (190 if white else 100) + 3, (background, cam.cap.gain, level)
 
     for background in (0.5, 1.0, 2.0, 8.0):
         cam = run(fake_camera(), background)

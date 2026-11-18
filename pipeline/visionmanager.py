@@ -9,6 +9,7 @@ from typing import List, Dict, Optional
 import platform
 import json
 import os
+import struct
 from datetime import datetime
 from threading import Thread, Lock
 from camera.preprocess import PROCESS_FRAME
@@ -19,12 +20,25 @@ logger = Logger("VisionManager")
 CAPTURES_DIR = "captures"
 
 
-class _NullNTables:
-    def execute(self, detections, latency, capture_ns):
-        pass
+def _open_writer(path: str, size, is_color: bool, raw: bool):
+    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+    if raw:
+        writer = cv2.VideoWriter(path, cv2.CAP_FFMPEG, fourcc, 30.0, size, [cv2.VIDEOWRITER_PROP_RAW_VIDEO, 1])
+        if writer.isOpened():
+            return writer, True
+    return cv2.VideoWriter(path, fourcc, 30.0, size, isColor=is_color), False
 
-    def updateFrameNum(self, frame_num: int):
-        pass
+
+def _set_avi_fps(path: str, fps: float) -> None:
+    with open(path, "r+b") as f:
+        head = f.read(8192)
+        avih, strh = head.find(b"avih"), head.find(b"strh")
+        if avih < 0 or strh < 0:
+            return
+        f.seek(avih + 8)
+        f.write(struct.pack("<I", round(1e6 / fps)))
+        f.seek(strh + 28)
+        f.write(struct.pack("<II", 1000, round(fps * 1000)))
 
 
 class CameraPipeline:
@@ -35,7 +49,7 @@ class CameraPipeline:
         self.pipeline_type = camera_config["pipeline"]
         self.enabled = camera_config["enabled"]
 
-        use_high_res = self.pipeline_type in ("apriltag", "raw")
+        use_high_res = self.pipeline_type == "apriltag"
 
         settings_category = f"Camera{self.camera_id}"
         if platform.system() == "Windows" or platform.system() == "Darwin":
@@ -54,6 +68,7 @@ class CameraPipeline:
         self._tags = None
         self._overlay_src = None
         self._overlay = None
+        self._preview = (None, 0, b"")
         self.detections: List = []
         self.frame_num = 0
         self.lock = Lock()
@@ -72,10 +87,6 @@ class CameraPipeline:
             localization.apriltag_solution.SET_CAM(self.camera_id, apriltag_section)
             self._apriltag = localization.detection.MAKE_APRILTAG_DETECTOR(apriltag_section)
             self.ntables = pipeline.ntables.AprilTagNTables(self.camera_id)
-        elif self.pipeline_type == "raw":
-            self.ntables = _NullNTables()
-            os.makedirs(CAPTURES_DIR, exist_ok=True)
-            logger.Log(f"Camera {self.camera_id}: raw capture mode (no preprocess/annotate)")
         else:
             from localization import gamepiece_solution
             from localization import visiony
@@ -93,6 +104,7 @@ class CameraPipeline:
             if not self.running:
                 return
             frame, capture_ns = self.cam.get_frame()
+            cam_frame, jpeg = frame, self.cam.last_jpeg
             read_ns = monotonic_ns()
 
             if frame is None:
@@ -131,9 +143,6 @@ class CameraPipeline:
                 detections = localization.apriltag_solution.CALCULATE_PARTIAL_SOLUTION(
                     self.camera_id, raw_gray, corners, ids
                 )
-            elif self.pipeline_type == "raw":
-                display_frame = frame
-                detections = []
             else:
                 display_frame, rawDets = self._visiony.runPipeline(frame)
                 detections = self._gamepiece_solution.CALCULATE_PARTIAL_SOLUTION(self.camera_id, frame, rawDets)
@@ -142,12 +151,18 @@ class CameraPipeline:
             processing_latency = (done_ns - read_ns) / 1e9
             capture_latency = (done_ns - capture_ns) / 1e9
 
+            if self.pipeline_type == "apriltag":
+                self.ntables.updateFrameNum(self.frame_num)
+            self.ntables.execute(detections, processing_latency, capture_ns)
+
             with self.lock:
-                if self.pipeline_type == "raw":
-                    if self._recording_pending and self._writer is None:
-                        self._start_writer_locked(display_frame)
-                    if self._writer is not None:
-                        self._writer.write(display_frame)
+                if self._recording_pending and self._writer is None:
+                    self._start_writer_locked(cam_frame, jpeg is not None)
+                if self._writer is not None:
+                    data = jpeg if self._writer_raw else cam_frame
+                    if data is not None:
+                        self._writer.write(data)
+                        self._record_frames += 1
                 self.frame = display_frame
                 self._tags = tags
                 self.detections = detections
@@ -169,31 +184,27 @@ class CameraPipeline:
                 self.fps_log_time = current_time
                 self.fps_log_count = 0
 
-            if self.pipeline_type == "apriltag":
-                self.ntables.updateFrameNum(self.frame_num)
-
-            self.ntables.execute(detections, processing_latency, capture_ns)
-
         except Exception as e:
             logger.Warn(f"Error in camera {self.camera_id}: {e}")
 
     def _capture_stamp(self) -> str:
         return datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
 
-    def _start_writer_locked(self, frame) -> None:
+    def _start_writer_locked(self, frame, raw: bool = False) -> None:
         height, width = frame.shape[:2]
         path = os.path.join(
             CAPTURES_DIR,
             f"cam{self.camera_id}_{self._capture_stamp()}.avi",
         )
-        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-        writer = cv2.VideoWriter(path, fourcc, 30.0, (width, height), isColor=frame.ndim == 3)
+        writer, self._writer_raw = _open_writer(path, (width, height), frame.ndim == 3, raw)
         if not writer.isOpened():
             self._last_capture_message = f"Failed to open video writer: {path}"
             logger.Warn(self._last_capture_message)
             self._recording_pending = False
             return
         self._writer = writer
+        self._record_frames = 0
+        self._record_start = time.monotonic()
         self._recording_path = path
         self._recording_pending = False
         self._last_capture_message = f"Recording: {path}"
@@ -234,6 +245,11 @@ class CameraPipeline:
             path = self._recording_path
             if self._writer is not None:
                 self._writer.release()
+                seconds = time.monotonic() - self._record_start
+                fps = self._record_frames / seconds if seconds > 0 else 0.0
+                if fps > 0:
+                    _set_avi_fps(path, fps)
+                path = f"{path} ({self._record_frames} frames, {seconds:.0f} s, {fps:.1f} fps)"
             self._writer = None
             self._recording_path = None
             self._recording_pending = False
@@ -261,6 +277,23 @@ class CameraPipeline:
                 self._overlay = localization.detection.ANNOTATE_TAGS(self.frame, *self._tags)
                 self._overlay_src = self.frame
             return self._overlay
+
+    def get_preview_jpeg(self, quality: int, max_width: int):
+        with self.lock:
+            frame, tags = self.frame, self._tags
+        if frame is None:
+            return None, None
+        source, cached_quality, jpeg = self._preview
+        if source is frame and cached_quality == quality:
+            return frame, jpeg
+        scale = min(1.0, max_width / frame.shape[1])
+        small = cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1.0 else frame
+        if tags is not None:
+            corners, ids = tags
+            small = localization.detection.ANNOTATE_TAGS(small, [c * scale for c in corners], ids)
+        jpeg = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, quality])[1].tobytes()
+        self._preview = (frame, quality, jpeg)
+        return frame, jpeg
 
     def get_detections(self):
         with self.lock:
@@ -304,9 +337,8 @@ class CameraPipeline:
             logger.Warn(f"Error releasing camera {self.camera_id}: {e}")
 
 class VisionManager:
-    def __init__(self, config_path: str, pipeline_override: str = None):
+    def __init__(self, config_path: str):
         self.config_path = config_path
-        self.pipeline_override = pipeline_override
         with open(config_path, 'r') as f:
             self.config = json.load(f)
 
@@ -321,19 +353,10 @@ class VisionManager:
         self.pipelines: Dict[int, CameraPipeline] = {}
 
         for camera_config in self.config["cameras"]:
-            camera_config = self._apply_pipeline_override(camera_config)
             pipeline_instance = CameraPipeline(camera_config)
             self.pipelines[camera_config["id"]] = pipeline_instance
 
         self.threads: List[Thread] = []
-
-    def _apply_pipeline_override(self, camera_config: dict) -> dict:
-        if not self.pipeline_override:
-            return camera_config
-        overridden = dict(camera_config)
-        overridden["pipeline"] = self.pipeline_override
-        overridden["enabled"] = True
-        return overridden
 
     def execute(self):
         for camera_id, pipeline in self.pipelines.items():
@@ -371,7 +394,6 @@ class VisionManager:
                     break
 
             if camera_config:
-                camera_config = self._apply_pipeline_override(camera_config)
                 new_pipeline = CameraPipeline(camera_config)
                 self.pipelines[camera_id] = new_pipeline
                 thread = Thread(target=self._run_pipeline, args=(new_pipeline,), daemon=True)
@@ -432,7 +454,6 @@ class VisionManager:
             self.pipelines = {}
             for camera_config in self.config["cameras"]:
                 try:
-                    camera_config = self._apply_pipeline_override(camera_config)
                     self.pipelines[camera_config["id"]] = CameraPipeline(camera_config)
                 except Exception as e:
                     logger.Warn(f"Error creating pipeline for camera {camera_config.get('id', 'unknown')}: {e}")
@@ -451,3 +472,21 @@ class VisionManager:
             logger.Warn(f"Error during pipeline reload: {e}")
             import traceback
             logger.Warn(traceback.format_exc())
+
+
+if __name__ == "__main__":
+    import tempfile
+    import numpy as np
+    gray = np.random.randint(0, 255, (800, 1280), np.uint8)
+    for raw in (True, False):
+        path = os.path.join(tempfile.mkdtemp(), "check.avi")
+        writer, used_raw = _open_writer(path, (1280, 800), False, raw)
+        assert used_raw == raw, f"raw JPEG passthrough unavailable in OpenCV {cv2.__version__}"
+        for _ in range(10):
+            writer.write(cv2.imencode(".jpg", gray)[1].reshape(1, -1) if raw else gray)
+        writer.release()
+        _set_avi_fps(path, 57.5)
+        cap = cv2.VideoCapture(path)
+        frames, fps = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)), cap.get(cv2.CAP_PROP_FPS)
+        assert frames == 10 and abs(fps - 57.5) < 0.01, (raw, frames, fps)
+    print("recorder ok")

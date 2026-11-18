@@ -7,11 +7,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--dev", action="store_true", help="Use development configuration")
-    parser.add_argument(
-        "--raw",
-        action="store_true",
-        help="Force raw capture mode (no preprocess/annotate; snapshot & record)",
-    )
     args = parser.parse_args()
 
     config_file = args.config
@@ -22,9 +17,7 @@ if __name__ == "__main__":
             config_file = "config.json"
 
     print(f"Using config: {config_file}")
-    if args.raw:
-        print("Raw capture mode enabled")
-    vision_manager = VisionManager(config_file, pipeline_override="raw" if args.raw else None)
+    vision_manager = VisionManager(config_file)
     import pipeline.htmlserver
     servers = []
     camera_ids = list(vision_manager.get_all_pipelines().keys())

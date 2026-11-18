@@ -110,7 +110,7 @@ def MAKE_APRILTAG_DETECTOR(section: str):
         except ImportError:
             logger.Warn(f"{section}: napa_vision not installed, trying robotpy_apriltag")
         else:
-            napa = NapaDetector(min_tag_px=napa_min_tag_px, max_hamming=1, min_contrast=12)
+            napa = NapaDetector(min_tag_px=napa_min_tag_px, max_hamming=2, min_contrast=12, sharpening=0.5)
             logger.Log(f"{section}: NAPA detector, min_tag_px {napa_min_tag_px}")
             return lambda image: DETECT_NAPA(napa, image)
 

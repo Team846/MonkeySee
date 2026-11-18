@@ -135,6 +135,10 @@
             "value": "0.0",
             "type": 2
         },
+        "CAM_MOUNT_ROLL_deg": {
+            "value": "0.0",
+            "type": 2
+        },
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
@@ -157,9 +161,17 @@
             "value": "0.0",
             "type": 2
         },
+        "CAM_MOUNT_ROLL_deg": {
+            "value": "0.0",
+            "type": 2
+        },
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
+        },
+        "napa_min_tag_px": {
+            "value": "16",
+            "type": 1
         }
     },
     "AprilTag2": {
@@ -171,9 +183,17 @@
             "value": "0.0",
             "type": 2
         },
+        "CAM_MOUNT_ROLL_deg": {
+            "value": "0.0",
+            "type": 2
+        },
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
+        },
+        "napa_min_tag_px": {
+            "value": "16",
+            "type": 1
         }
     },
     "AprilTag3": {
@@ -182,6 +202,10 @@
             "type": 2
         },
         "CAM_MOUNT_V_deg": {
+            "value": "0.0",
+            "type": 2
+        },
+        "CAM_MOUNT_ROLL_deg": {
             "value": "0.0",
             "type": 2
         },
@@ -199,9 +223,17 @@
             "value": "21.0",
             "type": 2
         },
+        "CAM_MOUNT_ROLL_deg": {
+            "value": "0.0",
+            "type": 2
+        },
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
+        },
+        "napa_min_tag_px": {
+            "value": "16",
+            "type": 1
         }
     },
     "Camera0": {
