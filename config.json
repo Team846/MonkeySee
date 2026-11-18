@@ -135,9 +135,21 @@
             "value": "0.0",
             "type": 2
         },
+        "CAM_MOUNT_ROLL_deg": {
+            "value": "0.0",
+            "type": 2
+        },
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
+        },
+        "apriltag_decimate": {
+            "value": "0",
+            "type": 1
+        },
+        "napa_min_tag_px": {
+            "value": "0",
+            "type": 1
         }
     },
     "AprilTag1": {
@@ -149,9 +161,17 @@
             "value": "0.0",
             "type": 2
         },
+        "CAM_MOUNT_ROLL_deg": {
+            "value": "0.0",
+            "type": 2
+        },
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
+        },
+        "napa_min_tag_px": {
+            "value": "16",
+            "type": 1
         }
     },
     "AprilTag2": {
@@ -163,9 +183,17 @@
             "value": "0.0",
             "type": 2
         },
+        "CAM_MOUNT_ROLL_deg": {
+            "value": "0.0",
+            "type": 2
+        },
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
+        },
+        "napa_min_tag_px": {
+            "value": "16",
+            "type": 1
         }
     },
     "AprilTag3": {
@@ -174,6 +202,10 @@
             "type": 2
         },
         "CAM_MOUNT_V_deg": {
+            "value": "0.0",
+            "type": 2
+        },
+        "CAM_MOUNT_ROLL_deg": {
             "value": "0.0",
             "type": 2
         },
@@ -191,14 +223,22 @@
             "value": "21.0",
             "type": 2
         },
+        "CAM_MOUNT_ROLL_deg": {
+            "value": "0.0",
+            "type": 2
+        },
         "TAG_H_in": {
             "value": "6.5",
             "type": 2
+        },
+        "napa_min_tag_px": {
+            "value": "16",
+            "type": 1
         }
     },
     "Camera0": {
         "auto_exposure": {
-            "value": "1",
+            "value": "0",
             "type": 1
         },
         "exposure": {
@@ -215,6 +255,14 @@
         },
         "height": {
             "value": "600",
+            "type": 1
+        },
+        "gain_target": {
+            "value": "100",
+            "type": 1
+        },
+        "tag_white_target": {
+            "value": "190",
             "type": 1
         }
     },

@@ -5,3 +5,5 @@ Flask
 pyntcore
 numba
 ultralytics
+robotpy-apriltag
+napa-vision==0.5.1

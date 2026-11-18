@@ -1,5 +1,5 @@
 import math
-from dash import Dash, html, dcc, Input, Output, State, ALL, MATCH
+from dash import Dash, html, dcc, Input, Output, State, ALL, MATCH, ctx
 import cv2
 from flask import Flask, Response, jsonify, request
 from pipeline.visionmanager import VisionManager
@@ -20,6 +20,7 @@ EXPOSURE_SLIDER_MAX = 100  # v4l2 units of 0.1ms
 GAIN_SLIDER_MAX = 255
 
 STREAM_MAX_FPS = 15
+STREAM_MAX_WIDTH = 640
 
 
 def dashboard_port(camera_id: int) -> int:
@@ -64,10 +65,7 @@ class DashboardServer:
             return html.Div(f"Camera {cam_id} not available")
         
         pipeline_type = pipeline.get_pipeline_type()
-        if pipeline_type == "raw":
-            settings_panel = self.create_raw_capture_panel(cam_id)
-            side_title = "Raw Capture"
-        elif pipeline_type == "apriltag":
+        if pipeline_type == "apriltag":
             settings_panel = self.create_apriltag_sliders(cam_id)
             side_title = "Detections"
         else:
@@ -325,75 +323,6 @@ class DashboardServer:
             "margin": "0",
         })
 
-    def _capture_button_style(self, bg_color):
-        return {
-            "margin": "8px 5px",
-            "font-size": "14px",
-            "color": "#161616",
-            "background-color": bg_color,
-            "border": "none",
-            "padding": "8px 16px",
-            "width": "200px",
-            "height": "40px",
-            "border-radius": "20px",
-            "cursor": "pointer",
-            "font-weight": "bold",
-        }
-
-    def create_raw_capture_panel(self, cam_id):
-        return html.Div([
-            html.H4("Capture", style={
-                'textAlign': 'left',
-                'color': '#CCC9CA',
-                'font-size': '18px',
-                'font-weight': 'medium',
-                'padding': '15px 0px 0px 7px',
-            }),
-            html.P(
-                "Live preview is the raw camera frame (no preprocess, no annotations). "
-                "Snapshots save as PNG; recordings save as MJPEG AVI under captures/.",
-                style={
-                    'color': '#CCC9CA',
-                    'font-size': '14px',
-                    'padding': '10px 15px',
-                    'margin': '0',
-                },
-            ),
-            html.Div([
-                html.Button(
-                    "Snapshot",
-                    id={'type': 'raw-snapshot', 'index': cam_id},
-                    style=self._capture_button_style("rgba(100, 200, 255, 1)"),
-                ),
-                html.Button(
-                    "Start Recording",
-                    id={'type': 'raw-record-start', 'index': cam_id},
-                    style=self._capture_button_style("rgba(100, 200, 100, 1)"),
-                ),
-                html.Button(
-                    "Stop Recording",
-                    id={'type': 'raw-record-stop', 'index': cam_id},
-                    style=self._capture_button_style("rgba(255, 100, 100, 1)"),
-                ),
-            ], style={
-                "display": "flex",
-                "flex-direction": "column",
-                "align-items": "center",
-                "padding": "10px",
-            }),
-            html.Div(
-                id=f'capture-status-{cam_id}',
-                style={
-                    'color': '#CCC9CA',
-                    'font-size': '14px',
-                    'padding': '15px 20px',
-                    'margin': '15px 7px',
-                    'border': '2px solid rgba(255, 255, 255, 0.3)',
-                    'border-radius': '10px',
-                },
-            ),
-        ])
-
     def create_exposure_controls(self, cam_id):
         pipeline = self.vision_manager.get_pipeline(cam_id)
         if not pipeline:
@@ -442,7 +371,7 @@ class DashboardServer:
 
             dcc.Checklist(
                 id={'type': 'auto-exposure', 'index': cam_id},
-                options=[{'label': ' Auto Exposure', 'value': 'auto'}],
+                options=[{'label': ' Auto Gain', 'value': 'auto'}],
                 value=['auto'] if auto else [],
                 style={
                     "color": "#CCC9CA",
@@ -462,7 +391,6 @@ class DashboardServer:
                 max=EXPOSURE_SLIDER_MAX,
                 step=1,
                 value=min(settings["exposure"], EXPOSURE_SLIDER_MAX),
-                disabled=auto,
                 marks={1: '1', EXPOSURE_SLIDER_MAX: str(EXPOSURE_SLIDER_MAX)},
                 tooltip={"placement": "bottom", "always_visible": True},
                 className="funky-slider"
@@ -486,6 +414,20 @@ class DashboardServer:
                 className="funky-slider"
             ),
             html.Br(),
+
+            html.Button("Retune Gain", id={'type': 'retune-gain', 'index': cam_id}, disabled=not auto, style={
+                "margin": "10px 15px 0",
+                "font-size": "14px",
+                "color": "#161616",
+                "background-color": "rgba(100, 200, 255, 1)",
+                "border": "none",
+                "padding": "8px 16px",
+                "width": "145px",
+                "height": "40px",
+                "border-radius": "20px",
+                "cursor": "pointer",
+                "font-weight": "bold"
+            }),
 
             html.Div(settings["status"], id={'type': 'exposure-status', 'index': cam_id}, style={
                 'color': '#CCC9CA',
@@ -1015,24 +957,6 @@ class DashboardServer:
             if not pipeline or not pipeline.is_enabled():
                 return [html.Div("Camera disabled", style={'color': '#888'})]
 
-            if pipeline.get_pipeline_type() == "raw":
-                status = pipeline.get_capture_status()
-                recording_label = "Recording" if status["recording"] else "Idle"
-                color = "#00ff00" if status["recording"] else "#CCC9CA"
-                return [html.Div([
-                    html.Div(f"Mode: raw", style={'color': '#CCC9CA', 'margin': '5px 0'}),
-                    html.Div(f"Status: {recording_label}", style={'color': color, 'margin': '5px 0'}),
-                    html.Div(
-                        status["message"] or "Use Snapshot / Start Recording",
-                        style={'color': '#CCC9CA', 'margin': '5px 0', 'font-size': '13px'},
-                    ),
-                ], style={
-                    'border': '2px solid rgba(255, 255, 255, 0.5)',
-                    'border-radius': '10px',
-                    'padding': '10px',
-                    'margin': '0 0px 20px 20px',
-                })]
-
             detections = pipeline.get_detections()
             if not detections:
                 return [html.Div("No detections", style={
@@ -1160,21 +1084,26 @@ class DashboardServer:
             return value
         
         @self.app.callback(
-            [Output({'type': 'exposure', 'index': MATCH}, 'disabled'),
-             Output({'type': 'gain', 'index': MATCH}, 'disabled'),
+            [Output({'type': 'gain', 'index': MATCH}, 'disabled'),
+             Output({'type': 'retune-gain', 'index': MATCH}, 'disabled'),
              Output({'type': 'exposure-status', 'index': MATCH}, 'children')],
             [Input({'type': 'auto-exposure', 'index': MATCH}, 'value'),
              Input({'type': 'exposure', 'index': MATCH}, 'value'),
-             Input({'type': 'gain', 'index': MATCH}, 'value')],
+             Input({'type': 'gain', 'index': MATCH}, 'value'),
+             Input({'type': 'retune-gain', 'index': MATCH}, 'n_clicks')],
             prevent_initial_call=True
         )
-        def update_exposure(auto_value, exposure, gain):
+        def update_exposure(auto_value, exposure, gain, _retune_clicks):
             auto = 'auto' in (auto_value or [])
             pipeline = self.vision_manager.get_pipeline(self.camera_id)
             if not pipeline or exposure is None or gain is None:
-                return auto, auto, no_update
-            pipeline.cam.set_exposure_settings(auto, int(exposure), int(gain))
-            return auto, auto, pipeline.cam.get_exposure_settings()["status"]
+                return auto, not auto, no_update
+            if (ctx.triggered_id or {}).get('type') == 'retune-gain':
+                pipeline.cam.retune_gain()
+            else:
+                pipeline.cam.set_exposure_settings(auto, int(exposure), int(gain))
+            pipeline.cam.wait_for_gain()
+            return auto, not auto, pipeline.cam.get_exposure_settings()["status"]
 
         @self.app.callback(
             Output({'type': 'resolution-status', 'index': MATCH}, 'children'),
@@ -1252,60 +1181,6 @@ class DashboardServer:
                 Thread(target=self.vision_manager.reload_all_pipelines, daemon=True).start()
             return n_clicks
 
-        @self.app.callback(
-            Output({'type': 'raw-snapshot', 'index': MATCH}, 'n_clicks'),
-            [Input({'type': 'raw-snapshot', 'index': MATCH}, 'n_clicks')],
-            prevent_initial_call=True
-        )
-        def raw_snapshot(n_clicks):
-            if n_clicks:
-                pipeline = self.vision_manager.get_pipeline(self.camera_id)
-                if pipeline:
-                    pipeline.save_snapshot()
-            return n_clicks
-
-        @self.app.callback(
-            Output({'type': 'raw-record-start', 'index': MATCH}, 'n_clicks'),
-            [Input({'type': 'raw-record-start', 'index': MATCH}, 'n_clicks')],
-            prevent_initial_call=True
-        )
-        def raw_record_start(n_clicks):
-            if n_clicks:
-                pipeline = self.vision_manager.get_pipeline(self.camera_id)
-                if pipeline:
-                    pipeline.start_recording()
-            return n_clicks
-
-        @self.app.callback(
-            Output({'type': 'raw-record-stop', 'index': MATCH}, 'n_clicks'),
-            [Input({'type': 'raw-record-stop', 'index': MATCH}, 'n_clicks')],
-            prevent_initial_call=True
-        )
-        def raw_record_stop(n_clicks):
-            if n_clicks:
-                pipeline = self.vision_manager.get_pipeline(self.camera_id)
-                if pipeline:
-                    pipeline.stop_recording()
-            return n_clicks
-
-        @self.app.callback(
-            Output(f'capture-status-{self.camera_id}', 'children'),
-            [Input('update-interval', 'n_intervals')],
-        )
-        def update_capture_status(n_intervals):
-            pipeline = self.vision_manager.get_pipeline(self.camera_id)
-            if not pipeline or pipeline.get_pipeline_type() != "raw":
-                return no_update
-            status = pipeline.get_capture_status()
-            recording = "Recording" if status["recording"] else "Idle"
-            path = status["path"] or "—"
-            message = status["message"] or "Ready"
-            return html.Div([
-                html.Div(f"Recorder: {recording}", style={'margin': '5px 0'}),
-                html.Div(f"File: {path}", style={'margin': '5px 0'}),
-                html.Div(f"Last: {message}", style={'margin': '5px 0'}),
-            ])
-        
         self.setup_calibration_callbacks()
         self.setup_focus_callbacks()
 
@@ -1535,19 +1410,14 @@ class DashboardServer:
                 continue
 
             time.sleep(max(0.0, next_send - time.monotonic()))
-            frame = pipeline.get_frame()
-            if frame is None or frame is last_source:
+            quality = int(DashboardServer.framecomp_slider.valueFloat() * 100)
+            source, jpeg = pipeline.get_preview_jpeg(quality, STREAM_MAX_WIDTH)
+            if source is None or source is last_source:
                 time.sleep(0.01)
                 continue
-            last_source = frame
+            last_source = source
             next_send = time.monotonic() + 1.0 / STREAM_MAX_FPS
-
-            quality = int(DashboardServer.framecomp_slider.valueFloat() * 100)
-            if pipeline.get_pipeline_type() == "raw":
-                quality = max(quality, 95)
-
-            ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
-            yield mjpeg_part(buffer.tobytes())
+            yield mjpeg_part(jpeg)
 
     def calibration_feed(self, camera_id: int):
         return Response(self.generate_calibration_frames(camera_id),
@@ -1824,15 +1694,13 @@ class CameraIndexServer:
                 continue
 
             time.sleep(max(0.0, next_send - time.monotonic()))
-            frame = pipeline.get_frame()
-            if frame is None or frame is last_source:
+            source, jpeg = pipeline.get_preview_jpeg(70, STREAM_MAX_WIDTH)
+            if source is None or source is last_source:
                 time.sleep(0.01)
                 continue
-            last_source = frame
+            last_source = source
             next_send = time.monotonic() + 1.0 / STREAM_MAX_FPS
-
-            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            yield mjpeg_part(buffer.tobytes())
+            yield mjpeg_part(jpeg)
 
     def _index_html(self):
         cards = []
@@ -1978,7 +1846,18 @@ class CameraIndexServer:
     (function() {{
       const host = window.location.hostname;
       document.querySelectorAll('.dash-link').forEach(function(el) {{
-        el.href = el.href.replace('HOST', host);
+        el.href = el.getAttribute('href').replace('HOST', host);
+      }});
+
+      document.addEventListener('visibilitychange', function() {{
+        document.querySelectorAll('img.stream').forEach(function(img) {{
+          if (document.hidden) {{
+            img.dataset.feed = img.getAttribute('src');
+            img.src = 'data:,';
+          }} else if (img.dataset.feed) {{
+            img.src = img.dataset.feed;
+          }}
+        }});
       }});
 
       async function refreshStatuses() {{
