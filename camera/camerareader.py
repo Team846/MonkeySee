@@ -126,7 +126,7 @@ class CameraReader:
             return
 
         self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
 
         if self.use_preprocessing:
             width, height = self.get_resolution()

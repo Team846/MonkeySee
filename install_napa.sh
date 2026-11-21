@@ -8,7 +8,7 @@ set -euo pipefail
 TARGET_USER=orangepi
 TARGET_HOST=10.8.46.204
 TARGET_DIR=/home/orangepi/MonkeySee
-VERSION=0.5.1
+VERSION=0.6.1
 MIN_TAG_PX=16
 WHEELS="$(cd "$(dirname "$0")" && pwd)/wheels"
 
@@ -34,7 +34,7 @@ set -euo pipefail
 cd $TARGET_DIR
 grep -q MAKE_APRILTAG_DETECTOR localization/detection.py || { echo "This Pi has no NAPA code yet, run ./deploy.sh --go first"; exit 1; }
 venv/bin/python -m pip install --no-index /tmp/$WHEEL
-venv/bin/python -c "import numpy as np; from napa_vision import NapaDetector; NapaDetector(min_tag_px=$MIN_TAG_PX, max_hamming=2, min_contrast=12, sharpening=0.5).detect(np.zeros((600, 800), np.uint8)); print('napa_vision works')"
+venv/bin/python -c "import numpy as np; from napa_vision import NapaDetector; NapaDetector(min_tag_px=$MIN_TAG_PX, max_hamming=2, min_contrast=12, sharpening=0.5, split_touching=False, recover_shadows=True).detect(np.zeros((600, 800), np.uint8)); print('napa_vision works')"
 cp config.json config.json.before_napa_$STAMP
 venv/bin/python - <<'PY'
 import json

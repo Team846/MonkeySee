@@ -40,6 +40,16 @@ EXCLUDES=(
   --exclude 'actuallyonopi/'
   --exclude 'boot.sh'
   --exclude 'pi-cal.json'
+  --exclude 'pi_cal.json'
+  --exclude 'config.json.bck'
+  --exclude 'backup.sh'
+  --exclude 'boot.bat'
+  --exclude 'crontab.txt'
+  --exclude 'README.md'
+  --exclude '.claude/'
+  --exclude 'tools/'
+  --exclude 'calibration/calibrate_offline.py'
+  --exclude 'calibration/calview.py'
 )
 
 RSYNC=(rsync -avz --backup "--backup-dir=${TARGET_DIR}_backup_${STAMP}"

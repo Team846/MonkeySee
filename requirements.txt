@@ -6,4 +6,4 @@ pyntcore
 numba
 ultralytics
 robotpy-apriltag
-napa-vision==0.5.1
+napa-vision==0.6.0
